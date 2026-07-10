@@ -97,8 +97,8 @@
         let gameMode = 'TITLE'; 
         let selectModeIndex = 0; // 0: ARCADE BATTLE, 1: TRAINING MODE
         let selectIndex = 0; 
-        const CHAR_COLORS = ['#3366ff', '#ff3333', '#33cc33'];
-        const CHAR_NAMES = ['RYU-BLUE', 'KEN-RED', 'CHUN-GREEN'];
+        const CHAR_COLORS = ['#ffffff', '#ff3333', '#3366ff'];
+        const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
 
         // トレーニングモード設定 (0: STAND, 1: CROUCH, 2: GUARD, 3: PARRY)
         let dummyStateSetting = 0;
@@ -106,13 +106,29 @@
 
         class Fireball {
             constructor(x, y, direction, owner, isEX = false, strength = 0) {
-                this.x = x; this.y = y; this.width = isEX ? 90 : 70; this.height = isEX ? 60 : 40;
-                this.speed = (isEX ? 14 : 8 + strength * 2.5) * direction; 
-                this.owner = owner; this.damage = isEX ? 7 : 5; this.hitStun = isEX ? 30 : 22;
-                this.guardStun = isEX ? 18 : 12; this.hitType = 'high'; this.isActive = true; this.isEX = isEX; this.hits = isEX ? 2 : 1;
+                this.x = x; this.y = y; 
+                this.width = isEX ? 110 : 70; 
+                this.height = isEX ? 90 : 60;
+                this.speed = (isEX ? 14 : 7 + strength * 2.5) * direction; 
+                this.owner = owner; 
+                this.damage = isEX ? 6 : 8; 
+                this.hitStun = isEX ? 30 : 22;
+                this.guardStun = isEX ? 18 : 12; 
+                this.hitType = 'high'; 
+                this.isActive = true; 
+                this.isEX = isEX; 
+                this.hits = isEX ? 3 : 1; 
             }
-            update() { this.x += this.speed; if (this.x < -100 || this.x > canvas.width + 100) this.isActive = false; }
-            draw() { ctx.fillStyle = this.isEX ? '#ff00ff' : '#00f3ff'; ctx.fillRect(this.x, this.y, this.width, this.height); }
+            update() { 
+                this.x += this.speed; 
+                if (this.x < -100 || this.x > canvas.width + 100) this.isActive = false; 
+            }
+            draw() { 
+                ctx.fillStyle = this.isEX ? '#cc33ff' : '#00f3ff'; 
+                ctx.beginPath();
+                ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2, this.height/2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
 
         class Fighter {
@@ -229,19 +245,53 @@
             }
 
             startNormalAttack(btnType, dirNum) {
-                if (this.state !== 'idle') return;
-                let isLow = [1,2,3].includes(dirNum) && btnType.includes('k');
-                let isOverhead = (this.facing === 1 && dirNum === 6 || this.facing === -1 && dirNum === 4) && btnType === 'hp';
+                if (this.state !== 'idle' && this.isGrounded) return;
+                if (!this.isGrounded && this.state !== 'idle') return;
+
+                let isPunch = ['j', 'k', 'l'].includes(btnType);
+                let isKick = ['u', 'i', 'o'].includes(btnType);
                 
-                let type = isLow ? 'low' : (isOverhead ? 'overhead' : 'high');
-                let name = isLow ? '屈キック' : (isOverhead ? '特殊中段' : '通常技');
+                let strengthNum = ['j', 'u'].includes(btnType) ? 0 : (['k', 'i'].includes(btnType) ? 1 : 2); 
+                let strengthName = ['弱', '中', '強'][strengthNum];
+                let typeName = isPunch ? 'P' : 'K';
+                
+                let isCrouching = [1, 2, 3].includes(dirNum) && this.isGrounded;
+                let isJumping = !this.isGrounded;
+                
+                let stanceName = isJumping ? 'ジャンプ' : (isCrouching ? 'しゃがみ' : '立ち');
+                let name = `${stanceName}${strengthName}${typeName}`;
+                let type = isCrouching ? (isKick ? 'low' : 'high') : (isJumping ? 'overhead' : 'high');
+                
+                // 特殊技：鎖骨割り（前中P）
+                let isOverhead = !isJumping && !isCrouching && isPunch && strengthNum === 1 && (this.facing === 1 ? dirNum === 6 : dirNum === 4);
+                if (isOverhead) {
+                    name = '鎖骨割り';
+                    type = 'overhead';
+                }
+
+                // 特殊技：足払い（しゃがみ強K）
+                let isSweep = isCrouching && isKick && strengthNum === 2;
+                if (isSweep) {
+                    name = '足払い(屈強K)';
+                }
 
                 this.state = 'attack'; this.hasHitThisAttack = false;
+                
+                let dmg = 4 + (strengthNum * 4); 
+                let startup = 4 + (strengthNum * 3);
+                let active = 4 + (strengthNum * 2);
+                let rec = 8 + (strengthNum * 6);
+                let hStun = 14 + (strengthNum * 4);
+                let gStun = 10 + (strengthNum * 3);
+                
                 this.currentAttack = { 
-                    name: name, damage: 6, width: 130, height: 40, offsetX: 70, offsetY: isLow ? 120 : 50, 
-                    rec: 10, active: 6, hitStun: 22, guardStun: 14, hitType: type 
+                    name: name, damage: dmg, 
+                    width: 100 + (strengthNum * 30), height: isJumping ? 60 : 40, 
+                    offsetX: 50 + (strengthNum * 15), offsetY: isCrouching ? 120 : (isJumping ? 150 : 50), 
+                    rec: rec, active: active, hitStun: hStun, guardStun: gStun, hitType: type 
                 };
-                this.stateTimer = 16;
+                
+                this.stateTimer = startup + active + rec;
                 document.getElementById(this.isCPU ? 'p2-status' : 'p1-status').innerText = name;
             }
 
@@ -272,36 +322,39 @@
                 const statusId = this.isCPU ? 'p2-status' : 'p1-status';
 
                 if (moveName === 'hadouken') {
-                    let isEX = strength === 3;
-                    this.currentAttack = { name: isEX ? 'EX波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength], isProjectile: true, hitStun: isEX ? 30 : 22, guardStun: isEX ? 18 : 12 };
-                    this.stateTimer = 25;
+                    let isSuper = strength === 3; 
+                    this.currentAttack = { 
+                        name: isSuper ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
+                        isProjectile: true, hitStun: isSuper ? 40 : 22, guardStun: isSuper ? 24 : 12 
+                    };
+                    this.stateTimer = isSuper ? 45 : 30; 
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
-                    projectiles.push(new Fireball(spawnX, this.y + 50, this.facing, this, isEX, strength));
+                    projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this, isSuper, strength));
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 } 
                 else if (moveName === 'shoryuken') {
-                    let isSuper = strength === 3;
-                    let jumpHeight = isSuper ? -20 : -14 - strength * 2;
-                    this.vy = jumpHeight; this.invincible = true;
+                    let isEX = strength === 3;
+                    let jumpHeight = isEX ? -22 : -16 - strength * 2;
+                    this.vy = jumpHeight; this.invincible = true; 
                     
                     this.currentAttack = { 
-                        name: isSuper ? '超・昇龍拳(2G)' : ['弱 昇龍拳','中 昇龍拳','強 昇龍拳'][strength], 
-                        damage: isSuper ? 5 : 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 24, hitStun: 35, guardStun: 10 
+                        name: isEX ? 'EX昇龍拳(1G)' : ['弱 昇龍拳','中 昇龍拳','強 昇龍拳'][strength], 
+                        damage: isEX ? 8 : 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: 10 
                     };
-                    this.stateTimer = 50; this.vx = this.facing * (isSuper ? 5 : 2 + strength);
+                    this.stateTimer = 55; this.vx = this.facing * (isEX ? 4 : 2 + strength);
 
-                    if (isSuper) { this.multihitCount = 5; this.multihitTimer = 1; }
+                    if (isEX) { this.multihitCount = 2; this.multihitTimer = 5; } 
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 } 
                 else if (moveName === 'tatsumaki') {
-                    let isSuper = strength === 3;
+                    let isEX = strength === 3;
                     this.currentAttack = { 
-                        name: isSuper ? '神・竜巻奥義(3G)' : ['弱 竜巻脚','中 竜巻脚','強 竜巻脚'][strength], 
-                        damage: isSuper ? 3 : 10, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 20, hitStun: 26, guardStun: 15 
+                        name: isEX ? '真空竜巻旋風脚(1G)' : ['弱 竜巻旋風脚','中 竜巻旋風脚','強 竜巻旋風脚'][strength], 
+                        damage: isEX ? 5 : 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 20, hitStun: 26, guardStun: 15 
                     };
-                    this.stateTimer = isSuper ? 70 : 35 + strength * 6;
-                    this.vx = this.facing * (isSuper ? 8 : 4 + strength); 
-                    if (isSuper) { this.multihitCount = 8; this.multihitTimer = 1; } 
+                    this.stateTimer = isEX ? 60 : 35 + strength * 6;
+                    this.vx = this.facing * (isEX ? 6 : 4 + strength); 
+                    if (isEX) { this.multihitCount = 4; this.multihitTimer = 10; } 
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 }
             }
@@ -371,9 +424,6 @@
         function displayFrameAdvantage(attacker, defender, diff) {
             const p1El = document.getElementById('p1-frame');
             const p2El = document.getElementById('p2-frame');
-            if (selectModeIndex === 1) {
-                // トレーニングモード中はコンソールやUIをリセットせず残しやすくする
-            }
             if (diff === 0) {
                 p1El.innerText = '±0F (五分)'; p2El.innerText = '±0F (五分)';
                 p1El.style.color = p2El.style.color = '#fff';
@@ -414,7 +464,6 @@
                     rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y);
         }
 
-        // CPU・ダミーの行動制御ロジック
         let cpuTimer = 0;
         function updateCPU() {
             if (player2.state === 'hitstun' || player2.state === 'guardstun') return;
@@ -422,7 +471,6 @@
             const dist = Math.abs(player1.x - player2.x);
             player2.cpuGuardType = null;
 
-            // 通常のバトルモードのAI
             if (selectModeIndex === 0) {
                 if (player2.state === 'idle') {
                     if (player1.state === 'attack' && dist < 260) {
@@ -449,15 +497,13 @@
                     }
                 }
             } 
-            // トレーニングモード中のダミー設定反映
             else {
-                player2.vx = 0; // 動かない
+                player2.vx = 0; 
                 if (player1.state === 'attack' && dist < 350) {
                     if (dummyStateSetting === 2) {
-                        // 常時ガード (相手の攻撃属性に合わせて最適ガード)
                         player2.cpuGuardType = (player1.currentAttack && player1.currentAttack.hitType === 'low') ? 'z' : 'a';
                     } else if (dummyStateSetting === 3) {
-                        player2.cpuGuardType = 'x'; // ジャストパリィ
+                        player2.cpuGuardType = 'x'; 
                     }
                 }
             }
@@ -511,7 +557,6 @@
                 ctx.fillStyle = '#ffffff'; ctx.font = '48px Impact'; ctx.textAlign = 'center';
                 ctx.fillText('SELECT GAME MODE', canvas.width / 2, 180);
 
-                // モード項目
                 const modes = ['1. ARCADE BATTLE', '2. TRAINING MODE'];
                 for(let i=0; i<2; i++) {
                     ctx.fillStyle = (selectModeIndex === i) ? '#00ffff' : '#666';
@@ -552,7 +597,6 @@
                 ctx.fillText('PRESS SPACE TO RETURN TO TITLE', canvas.width / 2, 440);
             }
 
-            // --- トレーニングモード用リアルタイム自動回復ループ ---
             if (selectModeIndex === 1 && gameMode === 'BATTLE') {
                 if (player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
                 if (player2.hp < 100) { player2.hp = 100; document.getElementById('p2-hp').style.width = '100%'; }
@@ -560,10 +604,8 @@
                 if (player2.meter < 3.0) { player2.addMeter(0.1); }
             }
 
-            // バトル挙動処理
             let p1Dir = getJoystickDirection();
             if (gameMode === 'BATTLE' && selectModeIndex === 1 && dummyStateSetting === 1) {
-                // ダミー常時しゃがみ状態設定の方向インジェクション
                 updateCPU(); player2.update(2); 
             } else {
                 updateCPU(); player2.update(5);
@@ -577,7 +619,6 @@
 
             player1.update(p1Dir);
 
-            // 衝突判定
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 let p = projectiles[i]; p.update(); p.draw();
                 let target = p.owner === player1 ? player2 : player1;
@@ -639,7 +680,6 @@
                 if (key === ' ') { gameMode = 'TITLE'; document.getElementById('game-ui').style.display = 'none'; document.getElementById('training-panel').style.display = 'none'; } return;
             }
 
-            // トレーニングモード中のダミー状態切替ショートカット (Tキー)
             if (gameMode === 'BATTLE' && selectModeIndex === 1 && key === 't') {
                 dummyStateSetting = (dummyStateSetting + 1) % 4;
                 document.getElementById('dummy-state-text').innerText = DUMMY_STRINGS[dummyStateSetting];
@@ -663,22 +703,24 @@
                     if (player1.tryThrow()) { inputBuffer = []; return; }
                 }
 
-                if (checkCommand('236') || checkCommand('26')) {
+                if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key))) {
                     if (strength === 3) {
                         if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('hadouken', 3); }
-                    } else if (['j','k','l'].includes(key)) { player1.startSpecialAttack('hadouken', strength); }
+                    } else { player1.startSpecialAttack('hadouken', strength); }
                     inputBuffer = []; return;
                 }
-                if (checkCommand('623')) {
+                
+                if (checkCommand('623') && (['j','k','l',' '].includes(key))) {
                     if (strength === 3) {
-                        if (player1.meter >= 2.0) { player1.meter -= 2.0; player1.startSpecialAttack('shoryuken', 3); }
-                    } else if (['j','k','l'].includes(key)) { player1.startSpecialAttack('shoryuken', strength); }
+                        if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('shoryuken', 3); }
+                    } else { player1.startSpecialAttack('shoryuken', strength); }
                     inputBuffer = []; return;
                 }
-                if (checkCommand('214') || checkCommand('24')) {
+                
+                if ((checkCommand('214') || checkCommand('24')) && (['u','i','o',' '].includes(key))) {
                     if (strength === 3) {
-                        if (player1.meter >= 3.0) { player1.meter -= 3.0; player1.startSpecialAttack('tatsumaki', 3); }
-                    } else if (['u','i','o'].includes(key)) { player1.startSpecialAttack('tatsumaki', strength); }
+                        if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('tatsumaki', 3); }
+                    } else { player1.startSpecialAttack('tatsumaki', strength); }
                     inputBuffer = []; return;
                 }
 
