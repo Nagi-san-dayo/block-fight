@@ -81,7 +81,7 @@
         <div id="training-panel">
             <strong style="color: #00ffcc;">TRAINING MODE CONTROL</strong><br>
             【Tキー】ダミー状態切替: <span id="dummy-state-text" style="color: #ffcc00; font-weight:bold;">STAND</span><br>
-            ※体力・パワーゲージは自動で即座にMAXまで常時自動回復します。
+            ※体力・パワーゲージはコンボ終了時に自動回復、ゲージは常時MAXになります。
         </div>
 
         <canvas id="gameCanvas" width="1280" height="720"></canvas>
@@ -138,8 +138,9 @@
                 this.hp = 100; this.meter = 0.0; 
                 this.guardShield = 100; this.isGuardCrushed = false; this.guardCrushTimer = 0;
                 this.facing = 1; this.isGrounded = false; this.state = 'idle'; this.stateTimer = 0;
-                this.hitstopTimer = 0; // ヒットストップ用タイマー
-                this.currentAttack = null; this.hasHitThisAttack = false; this.comboCount = 0; this.comboTimer = 0;
+                this.hitstopTimer = 0; 
+                this.currentAttack = null; this.hasHitThisAttack = false; 
+                this.comboCount = 0; this.comboDamage = 0; this.comboTimer = 0;
                 this.attackBox = { x: 0, y: 0, width: 0, height: 0 }; this.isCrouching = false; 
                 this.invincible = false; this.invincibleTimer = 0;
                 this.cpuGuardType = null; this.multihitCount = 0; this.multihitTimer = 0;
@@ -167,7 +168,7 @@
                 if (this.isGuardCrushed) ctx.fillStyle = '#ff33cc'; 
                 else if (this.invincible && this.state !== 'knockdown') ctx.fillStyle = '#ffff66'; 
                 else if (this.state === 'knockdown') ctx.fillStyle = '#884444'; 
-                else if (this.state === 'air_hit') ctx.fillStyle = '#ff66cc'; // 空中食らい時の色
+                else if (this.state === 'air_hit') ctx.fillStyle = '#ff66cc'; 
                 else if (this.state === 'hitstun') ctx.fillStyle = '#ff4444';
                 else if (this.state === 'guardstun') ctx.fillStyle = '#44ff44';
                 else if (this.state === 'attack') ctx.fillStyle = '#ffaa00';
@@ -193,7 +194,6 @@
             }
 
             update(currentDirNum) {
-                // ヒットストップ時はフレーム進行（タイマーや移動）を完全に停止
                 if (this.hitstopTimer > 0) {
                     this.hitstopTimer--;
                     return; 
@@ -236,9 +236,8 @@
                     this.isGrounded = true;
                     
                     if (this.state === 'air_hit') {
-                        // 空中吹き飛びから地面に触れた瞬間にダウンステートへ移行
                         this.state = 'knockdown';
-                        this.stateTimer = 50; // 起き上がりまでの寝っぱなし時間
+                        this.stateTimer = 50; 
                         this.vx = 0;
                     } else if (this.state === 'knockdown') {
                         this.vx = 0; 
@@ -276,19 +275,20 @@
                     }
                 }
 
+                if (this.comboTimer > 0) {
+                    this.comboTimer--;
+                    if (this.comboTimer === 0) {
+                        this.comboCount = 0;
+                        this.comboDamage = 0;
+                        document.getElementById(this.isCPU ? 'p2-combo' : 'p1-combo').style.opacity = 0;
+                    }
+                }
+
                 if (this.state === 'attack' && this.currentAttack && !this.currentAttack.isProjectile) {
                     const data = this.currentAttack;
                     this.attackBox.width = data.width; this.attackBox.height = data.height;
                     this.attackBox.y = this.y + data.offsetY;
                     this.attackBox.x = this.facing === 1 ? this.x + data.offsetX : this.x - data.width + (this.width - data.offsetX);
-                }
-
-                if (this.comboTimer > 0) {
-                    this.comboTimer--;
-                    if (this.comboTimer === 0) {
-                        this.comboCount = 0;
-                        document.getElementById(this.isCPU ? 'p2-combo' : 'p1-combo').style.opacity = 0;
-                    }
                 }
             }
 
@@ -339,7 +339,7 @@
                     cancelable: (strengthNum < 2), 
                     rapidCancelable: (strengthNum === 0), 
                     knockdown: isSweep,
-                    launch: false // 足払いはその場で即ダウン
+                    launch: false 
                 };
                 
                 this.stateTimer = startup + active + rec;
@@ -357,9 +357,18 @@
                     
                     target.state = 'knockdown'; target.stateTimer = 40;
                     target.hp = Math.max(0, target.hp - 12); 
+                    target.comboCount = 1;
+                    target.comboDamage = 12;
+                    target.comboTimer = 90;
                     target.x += this.facing * 180; target.vy = -8; target.vx = 0;
                     
                     document.getElementById(target.isCPU ? 'p2-hp' : 'p1-hp').style.width = target.hp + '%';
+                    
+                    const comboId = target.isCPU ? 'p2-combo' : 'p1-combo';
+                    const comboEl = document.getElementById(comboId);
+                    comboEl.innerText = `1 HIT! (${target.comboDamage} DMG)`;
+                    comboEl.style.opacity = 1;
+
                     displayFrameAdvantage(this, target, 10);
                     return true;
                 }
@@ -369,20 +378,17 @@
             startSpecialAttack(moveName, strength) {
                 if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return;
                 
-                // キャンセル処理の判定
                 if (this.state === 'attack') {
                     if (this.currentAttack && !this.currentAttack.isProjectile) {
                         let isStartup = this.stateTimer > (this.currentAttack.active + this.currentAttack.rec); 
                         let canHitCancel = this.hasHitThisAttack && this.currentAttack.cancelable;
                         
-                        // 【新仕様】通常昇竜拳のヒットストップ中のみ、EX昇竜拳(strength:3)へのキャンセルを特別に許可
                         let isShoryuToEXCancel = this.currentAttack.name.includes('昇龍拳') && !this.currentAttack.name.includes('EX') && this.hitstopTimer > 0 && strength === 3;
 
                         if (!isStartup && !canHitCancel && !isShoryuToEXCancel) return; 
                     } else { return; }
                 }
 
-                // キャンセルが成立した場合はヒットストップを即座に踏み倒して発動
                 this.hitstopTimer = 0;
                 this.state = 'attack'; this.hasHitThisAttack = false; this.vx = 0;
                 const statusId = this.isCPU ? 'p2-status' : 'p1-status';
@@ -391,7 +397,7 @@
                     let isSuper = strength === 3; 
                     this.currentAttack = { 
                         name: isSuper ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
-                        isProjectile: true, hitStun: isSuper ? 40 : 22, guardStun: isSuper ? 24 : 12, knockdown: isSuper, launch: isSuper
+                        isProjectile: true, damage: isSuper ? 18 : 8, hitStun: isSuper ? 40 : 22, guardStun: isSuper ? 24 : 12, knockdown: isSuper, launch: isSuper
                     };
                     this.stateTimer = isSuper ? 45 : 30; 
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
@@ -406,9 +412,8 @@
                     this.currentAttack = { 
                         name: isEX ? 'EX昇龍拳(1G)' : ['弱 昇龍拳','中 昇龍拳','強 昇龍拳'][strength], 
                         damage: isEX ? 8 : 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, 
-                        rec: 30, hitStun: 35, guardStun: 10, knockdown: true, launch: true // launch(打ち上げ)属性を適用
+                        rec: 30, hitStun: 35, guardStun: 10, knockdown: true, launch: true 
                     };
-                    // 通常昇竜拳の全体硬直を長め(60)に設定し、キャンセルしなかった場合は着地まで何も繋がらないように調整
                     this.stateTimer = isEX ? 50 : 60; 
                     this.vx = this.facing * (isEX ? 4 : 2 + strength);
 
@@ -420,9 +425,8 @@
                     this.currentAttack = { 
                         name: isEX ? '真空竜巻旋風脚(1G)' : ['弱 竜巻旋風脚','中 竜巻旋風脚','強 竜巻旋風脚'][strength], 
                         damage: isEX ? 5 : 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, 
-                        rec: 6, hitStun: 26, guardStun: 15, knockdown: true, launch: true // launch(打ち上げ)属性を適用
+                        rec: 6, hitStun: 26, guardStun: 15, knockdown: true, launch: true 
                     };
-                    // 画面端でヒット後に昇竜拳が繋がるよう全体の硬直フレーム(stateTimer)をコンパクトに調整
                     this.stateTimer = isEX ? 50 : 20 + strength * 4;
                     this.vy = -6; 
                     this.tatsuSpeed = this.facing * (isEX ? 9 : 6 + strength); 
@@ -432,7 +436,7 @@
             }
 
             evaluateHit(attack, hitType) {
-                if (this.invincible && this.state !== 'air_hit') return; // 空中食らい中は追撃可能
+                if (this.invincible && this.state !== 'air_hit') return; 
 
                 let isGuarded = false; let isParried = false;
                 if (this.isCPU) {
@@ -448,7 +452,6 @@
                 const statusId = this.isCPU ? 'p2-status' : 'p1-status';
                 let attacker = this.isCPU ? player1 : player2;
 
-                // 【新仕様】ヒットストップの付与 (攻撃側・防御側の両方を数フレームフリーズさせる)
                 let stopFrames = 8;
                 if (attack.name.includes('弱')) stopFrames = 5;
                 if (attack.name.includes('強')) stopFrames = 11;
@@ -478,10 +481,9 @@
 
                     this.state = 'guardstun'; this.stateTimer = finalGuardStun;
                     
-                    // 【新仕様】画面端の永久ハメ防止対策（プッシュバック）
                     let pushDist = 12;
                     if (this.x <= 0 || this.x + this.width >= canvas.width) {
-                        attacker.x -= attacker.facing * pushDist; // 防御側が端なら攻撃側が押し戻される
+                        attacker.x -= attacker.facing * pushDist; 
                     } else {
                         this.x -= this.facing * pushDist;
                     }
@@ -492,17 +494,21 @@
                     return;
                 }
 
-                // ヒット時の処理
                 this.hp = Math.max(0, this.hp - attack.damage);
                 document.getElementById(this.isCPU ? 'p2-hp' : 'p1-hp').style.width = this.hp + '%';
                 this.addMeter(0.08); 
 
-                this.comboCount++; this.comboTimer = attack.hitStun + 50;
+                this.comboCount++; 
+                this.comboDamage += attack.damage;
+                this.comboTimer = attack.hitStun + 50;
+                
                 const comboId = this.isCPU ? 'p2-combo' : 'p1-combo';
                 const comboEl = document.getElementById(comboId);
-                if (this.comboCount > 1) { comboEl.innerText = `${this.comboCount} HIT!`; comboEl.style.opacity = 1; }
+                if (this.comboCount > 0) { 
+                    comboEl.innerText = `${this.comboCount} HIT! (${this.comboDamage} DMG)`; 
+                    comboEl.style.opacity = 1; 
+                }
 
-                // 【新仕様】画面端ハメ防止（ヒット時プッシュバック）
                 let hitPushDist = 16;
                 if (this.x <= 0 || this.x + this.width >= canvas.width) {
                     attacker.x -= attacker.facing * hitPushDist;
@@ -512,14 +518,12 @@
 
                 if (attack.knockdown) {
                     if (attack.launch) {
-                        // 【新仕様】昇竜拳や竜巻旋風脚による空中打ち上げ挙動
                         document.getElementById(statusId).innerText = 'LAUNCH!';
                         this.state = 'air_hit';
-                        this.vy = -15; // 上方向へ吹き飛ばす
+                        this.vy = -15; 
                         this.vx = -this.facing * 2; 
-                        this.stateTimer = 999; // 着地するまでタイマーで状態が解けないように大きな値を設定
+                        this.stateTimer = 999; 
                     } else {
-                        // 足払いなどは従来どおりその場で即ダウン
                         document.getElementById(statusId).innerText = 'KNOCKDOWN!';
                         this.state = 'knockdown';
                         this.stateTimer = 50;
@@ -714,8 +718,12 @@
             }
 
             if (selectModeIndex === 1 && gameMode === 'BATTLE') {
-                if (player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
-                if (player2.hp < 100) { player2.hp = 100; document.getElementById('p2-hp').style.width = '100%'; }
+                const p1GettingHit = player1.state === 'hitstun' || player1.state === 'knockdown' || player1.state === 'air_hit' || player1.comboTimer > 0;
+                if (!p1GettingHit && player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
+                
+                const p2GettingHit = player2.state === 'hitstun' || player2.state === 'knockdown' || player2.state === 'air_hit' || player2.comboTimer > 0;
+                if (!p2GettingHit && player2.hp < 100) { player2.hp = 100; document.getElementById('p2-hp').style.width = '100%'; }
+                
                 if (player1.meter < 3.0) { player1.addMeter(0.1); }
                 if (player2.meter < 3.0) { player2.addMeter(0.1); }
             }
@@ -748,7 +756,6 @@
                 if (!p.isActive) projectiles.splice(i, 1);
             }
 
-            // 【新仕様】空中追撃(ジャグル)に対応。相手が air_hit 状態のときも攻撃判定を有効化する
             if (player1.state === 'attack' && player1.currentAttack && !player1.hasHitThisAttack && !player1.currentAttack.isProjectile && player1.multihitCount === 0) {
                 if (player1.stateTimer > player1.currentAttack.rec) {
                     if (player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
@@ -786,22 +793,27 @@
 
         window.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
+            const isSpace = (event.code === 'Space' || key === ' ');
+
+            if (isSpace) {
+                event.preventDefault(); 
+            }
 
             if (gameMode === 'TITLE') {
-                if (key === ' ') { gameMode = 'MODE_SELECT'; } return;
+                if (isSpace) { gameMode = 'MODE_SELECT'; } return;
             }
             if (gameMode === 'MODE_SELECT') {
                 if (key === 'w') { selectModeIndex = 0; }
                 if (key === 'x') { selectModeIndex = 1; }
-                if (key === ' ') { gameMode = 'CHAR_SELECT'; } return;
+                if (isSpace) { gameMode = 'CHAR_SELECT'; } return;
             }
             if (gameMode === 'CHAR_SELECT') {
                 if (key === 'a') { selectIndex = (selectIndex - 1 + 3) % 3; }
                 if (key === 'd') { selectIndex = (selectIndex + 1) % 3; }
-                if (key === ' ') { startBattle(); } return;
+                if (isSpace) { startBattle(); } return;
             }
             if (gameMode === 'GAME_OVER') {
-                if (key === ' ') { gameMode = 'TITLE'; document.getElementById('game-ui').style.display = 'none'; document.getElementById('training-panel').style.display = 'none'; } return;
+                if (isSpace) { gameMode = 'TITLE'; document.getElementById('game-ui').style.display = 'none'; document.getElementById('training-panel').style.display = 'none'; } return;
             }
 
             if (gameMode === 'BATTLE' && selectModeIndex === 1 && key === 't') {
@@ -818,37 +830,37 @@
                 }
             }
 
-            if (['j','k','l','u','i','o',' '].includes(key)) {
+            if (['j','k','l','u','i','o',' '].includes(key) || isSpace) {
                 const currentDir = getJoystickDirection();
                 let strength = ['j','u'].includes(key) ? 0 : (['k','i'].includes(key) ? 1 : 2);
-                if (key === ' ') strength = 3; 
+                if (isSpace) strength = 3; 
 
                 if ((key === 'l' || key === 'o') && (currentDir === 4 || currentDir === 6)) {
                     if (player1.tryThrow()) { inputBuffer = []; return; }
                 }
 
-                if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key))) {
+                if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key) || isSpace)) {
                     if (strength === 3) {
                         if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('hadouken', 3); }
                     } else { player1.startSpecialAttack('hadouken', strength); }
                     inputBuffer = []; return;
                 }
                 
-                if (checkCommand('623') && (['j','k','l',' '].includes(key))) {
+                if (checkCommand('623') && (['j','k','l',' '].includes(key) || isSpace)) {
                     if (strength === 3) {
                         if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('shoryuken', 3); }
                     } else { player1.startSpecialAttack('shoryuken', strength); }
                     inputBuffer = []; return;
                 }
                 
-                if ((checkCommand('214') || checkCommand('24')) && (['u','i','o',' '].includes(key))) {
+                if ((checkCommand('214') || checkCommand('24')) && (['u','i','o',' '].includes(key) || isSpace)) {
                     if (strength === 3) {
                         if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('tatsumaki', 3); }
                     } else { player1.startSpecialAttack('tatsumaki', strength); }
                     inputBuffer = []; return;
                 }
 
-                if (key !== ' ') player1.startNormalAttack(key, currentDir);
+                if (!isSpace) player1.startNormalAttack(key, currentDir);
             }
         });
 
