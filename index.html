@@ -132,8 +132,8 @@
         const GRAVITY = 0.8;
         const FLOOR_Y = canvas.height - 60;
         
-        let gameMode = 'TITLE'; // TITLE, CHAR_SELECT, BATTLE, GAME_OVER
-        let selectModeIndex = 0; // 0: CPU, 1: TRAINING, 2: ONLINE
+        let gameMode = 'TITLE'; 
+        let selectModeIndex = 0; 
         let selectIndex = 0; 
         const CHAR_COLORS = ['#ffffff', '#ff3333', '#3366ff'];
         const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
@@ -141,13 +141,11 @@
         let dummyStateSetting = 0;
         const DUMMY_STRINGS = ['立ち (IDLE)', 'しゃがみ (CROUCH)', '常時ガード (GUARD)', 'ジャストパリィ (PARRY)'];
 
-        // --- オンライン対戦用変数 ---
         let socket = null;
         let myPlayerType = null; 
         let currentRoomId = null;
         let isOnlineMode = false;
 
-        // --- SF3風 カットイン演出用変数 ---
         let cutInTimer = 0;
         let cutInAttacker = null;
         const CUTIN_DURATION = 40; 
@@ -161,8 +159,8 @@
                 this.owner = owner; 
                 this.name = isEX ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength];
                 this.damage = isEX ? 6 : 8; 
-                this.hitStun = isEX ? 30 : 22;
-                this.guardStun = isEX ? 18 : 12; 
+                this.hitStun = isEX ? 30 : 15; // 波動拳からのコンボを防ぐため微減
+                this.guardStun = isEX ? 18 : 10; 
                 this.hitType = 'high'; 
                 this.isActive = true; 
                 this.isEX = isEX; 
@@ -199,6 +197,7 @@
                 
                 this.bufferedInput = null; 
                 this.shoryuCancelWindow = 0; 
+                this.weakChainCount = 0; // チェーンリミット用
             }
 
             addMeter(amount) {
@@ -287,11 +286,16 @@
                     document.getElementById(`${id}-guard`).style.width = this.guardShield + '%';
                 }
 
+                let prevHeight = this.height;
                 const disableCrouchStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
                 if (!disableCrouchStates.includes(this.state) && [1, 2, 3].includes(currentDirNum)) {
                     this.isCrouching = true; this.height = this.baseHeight * 0.7;
                 } else if (!disableCrouchStates.includes(this.state)) {
                     this.isCrouching = false; this.height = this.baseHeight;
+                }
+
+                if (this.height !== prevHeight && this.isGrounded) {
+                    this.y += (prevHeight - this.height);
                 }
 
                 if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
@@ -336,30 +340,35 @@
                 if (this.stateTimer > 0) {
                     this.stateTimer--;
                     if (this.stateTimer === 0) { 
-                        if (this.state === 'knockdown') {
-                            this.state = 'idle';
-                            this.invincibleTimer = 20; 
-                            this.height = this.baseHeight;
+                        if (this.currentAttack && this.currentAttack.name.includes('竜巻') && !this.isGrounded) {
+                            this.stateTimer = 1; 
                         } else {
-                            this.state = 'idle'; this.currentAttack = null; this.multihitCount = 0;
-                            this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
-                        }
+                            if (this.state === 'knockdown') {
+                                this.state = 'idle';
+                                this.invincibleTimer = 20; 
+                                this.height = this.baseHeight;
+                            } else {
+                                this.state = 'idle'; this.currentAttack = null; this.multihitCount = 0;
+                                this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
+                                this.weakChainCount = 0;
+                            }
 
-                        if (this.state === 'idle' && this.bufferedInput && (Date.now() - this.bufferedInput.time < 150)) {
-                            let b = this.bufferedInput;
-                            this.bufferedInput = null; 
-                            if (b.type === 'special') {
-                                if (b.strength === 3) {
-                                    if (this.meter >= 1.0) {
-                                        this.meter -= 1.0;
-                                        let successEX = this.startSpecialAttack(b.moveName, 3);
-                                        if (!successEX) this.meter += 1.0; 
+                            if (this.state === 'idle' && this.bufferedInput && (Date.now() - this.bufferedInput.time < 150)) {
+                                let b = this.bufferedInput;
+                                this.bufferedInput = null; 
+                                if (b.type === 'special') {
+                                    if (b.strength === 3) {
+                                        if (this.meter >= 1.0) {
+                                            this.meter -= 1.0;
+                                            let successEX = this.startSpecialAttack(b.moveName, 3);
+                                            if (!successEX) this.meter += 1.0; 
+                                        }
+                                    } else {
+                                        this.startSpecialAttack(b.moveName, b.strength);
                                     }
-                                } else {
-                                    this.startSpecialAttack(b.moveName, b.strength);
+                                } else if (b.type === 'normal') {
+                                    this.startNormalAttack(b.key, b.dir);
                                 }
-                            } else if (b.type === 'normal') {
-                                this.startNormalAttack(b.key, b.dir);
                             }
                         }
                     }
@@ -394,6 +403,13 @@
                 if (this.state !== 'idle' && !isRapid) return false;
                 if (isAirborne) return false;
 
+                if (isRapid) {
+                    if (this.weakChainCount >= 2) return false;
+                    this.weakChainCount++;
+                } else {
+                    this.weakChainCount = 1;
+                }
+
                 let stanceName = isJumping ? 'ジャンプ' : (isCrouching ? 'しゃがみ' : '立ち');
                 let name = `${stanceName}${strengthName}${typeName}`;
                 let type = isCrouching ? (isKick ? 'low' : 'high') : (isJumping ? 'overhead' : 'high');
@@ -406,22 +422,13 @@
 
                 this.state = 'attack'; this.hasHitThisAttack = false;
                 
-                let dmg = 4 + (strengthNum * 4); 
-                let startup = 3 + (strengthNum * 2);
-                let active = 3 + (strengthNum * 2);
-                let rec = 6 + (strengthNum * 5); 
-                
-                let hStun = 0;
-                let gStun = 0;
+                let dmg, startup, active, rec, hStun, gStun;
                 if (strengthNum === 0) {
-                    hStun = 14; 
-                    gStun = 11; 
+                    dmg = 10; startup = 4; active = 3; rec = 8; hStun = 12; gStun = 6;
                 } else if (strengthNum === 1) {
-                    hStun = 14; 
-                    gStun = 10; 
+                    dmg = 20; startup = 7; active = 4; rec = 14; hStun = 16; gStun = 10;
                 } else {
-                    hStun = 18; 
-                    gStun = 14; 
+                    dmg = 30; startup = 11; active = 5; rec = 20; hStun = 24; gStun = 12;
                 }
                 
                 this.currentAttack = { 
@@ -523,9 +530,9 @@
                 if (moveName === 'hadouken') {
                     this.currentAttack = { 
                         name: ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
-                        isProjectile: true, damage: 8, hitStun: 22, guardStun: 12, knockdown: false, launch: false
+                        isProjectile: true, damage: 8, hitStun: 15, guardStun: 10, knockdown: false, launch: false
                     };
-                    this.stateTimer = 30; 
+                    this.stateTimer = 42; // 硬直増加でループ防止
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
                     projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this, false, strength));
                     document.getElementById(statusId).innerText = this.currentAttack.name;
@@ -870,7 +877,6 @@
             ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#444'; ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
 
-            // --- 新しい統合タイトル画面メニュー描画 ---
             if (gameMode === 'TITLE') {
                 ctx.fillStyle = '#ffcc00'; ctx.font = '68px Impact'; ctx.textAlign = 'center';
                 ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 200);
@@ -986,15 +992,27 @@
                 let p = projectiles[i]; p.update(); p.draw();
                 let target = p.owner === player1 ? player2 : player1;
                 if (checkCollision(p, target) && p.isActive) {
-                    target.evaluateHit(p, p.hitType); p.hits--; if (p.hits <= 0) p.isActive = false;
-                    if (p.owner) p.owner.addMeter(0.06);
+                    let canHit = true;
+                    if(target.state === 'air_hit') canHit = false; // 空中への飛び道具追撃を制限
+                    if(canHit) {
+                        target.evaluateHit(p, p.hitType); p.hits--; if (p.hits <= 0) p.isActive = false;
+                        if (p.owner) p.owner.addMeter(0.06);
+                    }
                 }
                 if (!p.isActive) projectiles.splice(i, 1);
             }
 
             if (player1.state === 'attack' && player1.currentAttack && !player1.hasHitThisAttack && !player1.currentAttack.isProjectile && player1.multihitCount === 0) {
                 if (player1.stateTimer > player1.currentAttack.rec) {
-                    if (player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
+                    let canHit = true;
+                    if (player2.state === 'air_hit') {
+                        const atkName = player1.currentAttack.name;
+                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) {
+                            canHit = false;
+                        }
+                    }
+                    
+                    if (canHit && player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
                         if (checkCollision(player1.attackBox, player2)) {
                             player2.evaluateHit(player1.currentAttack, player1.currentAttack.hitType || 'high');
                             player1.hasHitThisAttack = true; player1.addMeter(0.06);
@@ -1002,9 +1020,18 @@
                     }
                 }
             }
+
             if (player2.state === 'attack' && player2.currentAttack && !player2.hasHitThisAttack && !player2.currentAttack.isProjectile && player2.multihitCount === 0) {
                 if (player2.stateTimer > player2.currentAttack.rec) {
-                    if (player1.state !== 'knockdown' && player1.state !== 'guardstun') {
+                    let canHit = true;
+                    if (player1.state === 'air_hit') {
+                        const atkName = player2.currentAttack.name;
+                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) {
+                            canHit = false;
+                        }
+                    }
+
+                    if (canHit && player1.state !== 'knockdown' && player1.state !== 'guardstun') {
                         if (checkCollision(player2.attackBox, player1)) {
                             player1.evaluateHit(player2.currentAttack, player2.currentAttack.hitType || 'high'); 
                             player2.hasHitThisAttack = true; player2.addMeter(0.06);
@@ -1042,16 +1069,13 @@
 
             if (isSpace) { event.preventDefault(); }
 
-            // TITLE画面でのメニュー操作
             if (gameMode === 'TITLE') {
                 if (key === 'w') { selectModeIndex = (selectModeIndex - 1 + 3) % 3; }
                 if (key === 's') { selectModeIndex = (selectModeIndex + 1) % 3; }
                 if (isSpace) { 
                     if (selectModeIndex === 2) {
-                        // ルームマッチ選択時のみ入力UIを起動
                         document.getElementById('room-ui').style.display = 'flex';
                     } else {
-                        // CPU、トレーニングはそのままキャラクターセレクトへ
                         gameMode = 'CHAR_SELECT'; 
                     }
                 } 
@@ -1180,7 +1204,6 @@
             }
         });
 
-        // --- オンライン通信設定イベント ---
         document.getElementById('back-to-menu-btn').addEventListener('click', () => {
             document.getElementById('room-ui').style.display = 'none';
             gameMode = 'TITLE';
@@ -1213,7 +1236,7 @@
                 setTimeout(() => {
                     document.getElementById('room-ui').style.display = 'none';
                     isOnlineMode = true;
-                    gameMode = 'CHAR_SELECT'; // 1対1が確定したらキャラ選択へ移行
+                    gameMode = 'CHAR_SELECT'; 
                 }, 1000);
             });
 
