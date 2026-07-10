@@ -49,7 +49,7 @@
         #room-ui {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 15, 20, 0.95); z-index: 100;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
             font-family: 'Arial', sans-serif;
         }
         .room-box {
@@ -130,7 +130,9 @@
         const FLOOR_Y = canvas.height - 60;
         
         let gameMode = 'TITLE'; 
-        let selectModeIndex = 0;
+        let titleSelectIndex = 0; // タイトル画面のメニュー選択用
+        const TITLE_MENU_ITEMS = ['RANDOM MATCH', 'ROOM MATCH', 'CPU ARCADE', 'TRAINING MODE'];
+        
         let selectIndex = 0; 
         const CHAR_COLORS = ['#ffffff', '#ff3333', '#3366ff'];
         const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
@@ -140,14 +142,14 @@
 
         // --- オンライン対戦用変数 ---
         let socket = null;
-        let myPlayerType = null; // 'p1' または 'p2'
+        let myPlayerType = null; 
         let currentRoomId = null;
         let isOnlineMode = false;
 
         // --- SF3風 カットイン演出用変数 ---
         let cutInTimer = 0;
         let cutInAttacker = null;
-        const CUTIN_DURATION = 40; // カットイン演出のフレーム数（約0.6秒）
+        const CUTIN_DURATION = 40; 
 
         class Fireball {
             constructor(x, y, direction, owner, isEX = false, strength = 0) {
@@ -284,11 +286,15 @@
                     document.getElementById(`${id}-guard`).style.width = this.guardShield + '%';
                 }
 
+                // しゃがみ入力の即時判定と移動入力の完全遮断
                 const disableCrouchStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
                 if (!disableCrouchStates.includes(this.state) && [1, 2, 3].includes(currentDirNum)) {
-                    this.isCrouching = true; this.height = this.baseHeight * 0.7;
+                    this.isCrouching = true; 
+                    this.height = this.baseHeight * 0.7;
+                    this.vx = 0; // しゃがみ中は横移動不可
                 } else if (!disableCrouchStates.includes(this.state)) {
-                    this.isCrouching = false; this.height = this.baseHeight;
+                    this.isCrouching = false; 
+                    this.height = this.baseHeight;
                 }
 
                 if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
@@ -298,9 +304,11 @@
 
                 this.y += this.vy;
                 if (this.y + this.height >= FLOOR_Y) {
-                    this.y = FLOOR_Y - this.height; 
-                    this.vy = 0; 
-                    this.isGrounded = true;
+                    if (!this.isGrounded) {
+                        this.y = FLOOR_Y - this.height;
+                        this.vy = 0;
+                        this.isGrounded = true;
+                    }
                     
                     if (this.state === 'air_hit') {
                         this.state = 'knockdown';
@@ -438,7 +446,6 @@
                 const id = (this === player1) ? 'p1-status' : 'p2-status';
                 document.getElementById(id).innerText = name;
 
-                // オンライン対戦用：通常攻撃を同期
                 if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'normal', btnType, dirNum });
                 }
@@ -472,7 +479,6 @@
 
                     displayFrameAdvantage(this, target, 10);
 
-                    // オンライン対戦用：投げの同期
                     if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                         socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'throw' });
                     }
@@ -496,7 +502,6 @@
                     } else { return false; }
                 }
 
-                // --- ゲージ消費技(strength === 3)のSF3風カットイン演出割り込み ---
                 if (strength === 3) {
                     this.state = 'attack'; this.vx = 0;
                     let exName = '';
@@ -506,11 +511,9 @@
                     
                     this.currentAttack = { name: exName, rawMoveName: moveName }; 
                     
-                    // カットインタイマー起動
                     cutInTimer = CUTIN_DURATION;
                     cutInAttacker = this;
 
-                    // オンライン対戦用：必殺技発動の送信
                     if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                         socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
                     }
@@ -558,7 +561,6 @@
                 }
                 this.updateAttackBox();
 
-                // オンライン対戦用：通常必殺技の送信
                 if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
                 }
@@ -580,7 +582,6 @@
                         else if (activeMoveKey === 'a' && hitType !== 'low') isGuarded = true;
                         else if (activeMoveKey === 'z' && hitType !== 'overhead') isGuarded = true;
                     } else if (this === player2 && isOnlineMode) {
-                        // オンライン対戦時は相手側のキー入力が同期されている前提（簡易判定）
                         if (player2MoveKey === 'x') isParried = true;
                         else if (player2MoveKey === 'a' && hitType !== 'low') isGuarded = true;
                         else if (player2MoveKey === 'z' && hitType !== 'overhead') isGuarded = true;
@@ -692,7 +693,6 @@
             }
         }
 
-        // カットイン演出終了後に実際にEX/スーパー技の判定を出現させる処理
         function executeSpecialAfterCutIn(fighter) {
             fighter.hitstopTimer = 0;
             fighter.shoryuCancelWindow = 0;
@@ -735,7 +735,6 @@
             const p1El = document.getElementById('p1-frame');
             const p2El = document.getElementById('p2-frame');
             
-            // プレイヤー1側から見た表記に統一
             let isP1Attacker = (attacker === player1);
             let targetDiff = isP1Attacker ? diff : -diff;
 
@@ -755,7 +754,7 @@
         let matchTimer = 99; let matchTimerInterval;
 
         let activeMoveKey = null; const moveKeyStack = [];
-        let player2MoveKey = null; // オンライン対戦時のP2ガード判定用
+        let player2MoveKey = null; 
 
         function getJoystickDirection() {
             switch (activeMoveKey) {
@@ -778,7 +777,7 @@
             const dist = Math.abs(player1.x - player2.x);
             player2.cpuGuardType = null;
 
-            if (selectModeIndex === 0) {
+            if (titleSelectIndex === 2) { // CPU ARCADE モード
                 if (player2.state === 'idle') {
                     if (player1.state === 'attack' && dist < 260) {
                         player2.cpuGuardType = Math.random() < 0.12 ? 'x' : (Math.random() < 0.5 ? 'z' : 'a');
@@ -804,7 +803,7 @@
                     }
                 }
             } 
-            else {
+            else { // TRAINING MODE などのダミー挙動
                 player2.vx = 0; 
                 if (player1.state === 'attack' && dist < 350) {
                     if (dummyStateSetting === 2) {
@@ -820,7 +819,7 @@
             gameMode = 'BATTLE';
             document.getElementById('game-ui').style.display = 'flex';
             
-            if (selectModeIndex === 1) {
+            if (titleSelectIndex === 3) { // TRAINING MODE
                 document.getElementById('training-panel').style.display = 'block';
                 document.getElementById('timer').innerText = '∞';
             } else {
@@ -831,14 +830,13 @@
             player1 = new Fighter({ x: 250, y: 0, color: CHAR_COLORS[selectIndex], isCPU: false, name: CHAR_NAMES[selectIndex] });
             let cpuColorIndex = (selectIndex + 1) % CHAR_COLORS.length;
             
-            // オンラインモード時はP2もCPUフラグを外す
             player2 = new Fighter({ x: 900, y: 0, color: CHAR_COLORS[cpuColorIndex], isCPU: isOnlineMode ? false : true, name: CHAR_NAMES[cpuColorIndex] });
             
             document.getElementById('p1-name').innerText = player1.name + (isOnlineMode && myPlayerType === 'p1' ? ' (YOU)' : '');
-            document.getElementById('p2-name').innerText = player2.name + (isOnlineMode ? (myPlayerType === 'p2' ? ' (YOU)' : ' (NET)') : (selectModeIndex === 1 ? ' (DUMMY)' : ' (CPU)'));
+            document.getElementById('p2-name').innerText = player2.name + (isOnlineMode ? (myPlayerType === 'p2' ? ' (YOU)' : ' (NET)') : (titleSelectIndex === 3 ? ' (DUMMY)' : ' (CPU)'));
             
             clearInterval(matchTimerInterval);
-            if (selectModeIndex === 0 && !isOnlineMode) {
+            if (titleSelectIndex === 2 && !isOnlineMode) { // CPU ARCADE のみタイマー減算
                 matchTimerInterval = setInterval(() => {
                     if (gameMode === 'BATTLE') {
                         matchTimer--; document.getElementById('timer').innerText = matchTimer;
@@ -848,31 +846,34 @@
             }
         }
 
+        function setupOnlineSocket() {
+            // ルームマッチUIを表示して入力を待つ
+            document.getElementById('room-ui').style.display = 'flex';
+            document.getElementById('room-id-input').focus();
+        }
+
+        function setupRandomMatch() {
+            // ランダムマッチのモック/サーバー通信ロジック
+            socket = io("https://block-fight.onrender.com/");
+            currentRoomId = "RANDOM_" + Math.floor(Math.random() * 10000);
+            isOnlineMode = true;
+            
+            // 簡易的に直接キャラ選択へ（必要に応じてサーバーの仕様と合わせてください）
+            gameMode = 'CHAR_SELECT';
+            myPlayerType = 'p1'; 
+            alert("ランダムマッチとして接続を開始しました。(ROOM: " + currentRoomId + ")");
+        }
+
         function animate() {
             window.requestAnimationFrame(animate);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // --- SF3風 カットイン演出の割り込み描画 ---
             if (cutInTimer > 0) {
                 cutInTimer--;
-
-                // 1. 画面の暗転
-                ctx.fillStyle = 'rgba(10, 10, 15, 0.85)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // 2. スピードライン背景帯
-                ctx.fillStyle = cutInAttacker.color;
-                let bandY = canvas.height / 2 - 80;
-                ctx.fillRect(0, bandY, canvas.width, 160);
-
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, bandY, canvas.width, 4);
-                ctx.fillRect(0, bandY + 160, canvas.width, 4);
-
-                // 3. 技名のダイナミック表示
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'italic bold 70px Impact';
-                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = cutInAttacker.color; let bandY = canvas.height / 2 - 80; ctx.fillRect(0, bandY, canvas.width, 160);
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, bandY, canvas.width, 4); ctx.fillRect(0, bandY + 160, canvas.width, 4);
+                ctx.fillStyle = '#ffffff'; ctx.font = 'italic bold 70px Impact'; ctx.textAlign = 'center';
 
                 let textX = canvas.width / 2;
                 if (cutInTimer > CUTIN_DURATION - 10) {
@@ -880,36 +881,33 @@
                 }
                 ctx.fillText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 25);
 
-                // 演出終了時に実際の技アクションへ遷移
-                if (cutInTimer === 0) {
-                    executeSpecialAfterCutIn(cutInAttacker);
-                }
-                return; // カットイン中はここで描画ループを止め、ゲーム進行をフリーズさせる
+                if (cutInTimer === 0) executeSpecialAfterCutIn(cutInAttacker);
+                return; 
             }
 
             ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#444'; ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
 
+            // --- 新タイトル画面描画 (4つのモード) ---
             if (gameMode === 'TITLE') {
                 ctx.fillStyle = '#ffcc00'; ctx.font = '68px Impact'; ctx.textAlign = 'center';
-                ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 260);
-                ctx.fillStyle = '#ffffff'; ctx.font = '28px Arial';
-                ctx.fillText('PRESS SPACE KEY TO START', canvas.width / 2, 420);
-                return;
-            }
-
-            if (gameMode === 'MODE_SELECT') {
-                ctx.fillStyle = '#ffffff'; ctx.font = '48px Impact'; ctx.textAlign = 'center';
-                ctx.fillText('SELECT GAME MODE', canvas.width / 2, 180);
-
-                const modes = ['1. ARCADE BATTLE', '2. TRAINING MODE'];
-                for(let i=0; i<2; i++) {
-                    ctx.fillStyle = (selectModeIndex === i) ? '#00ffff' : '#666';
-                    ctx.font = (selectModeIndex === i) ? '36px Arial Black' : '30px Arial';
-                    ctx.fillText((selectModeIndex === i ? '➔ ' : '') + modes[i], canvas.width / 2, 320 + i * 80);
+                ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 180);
+                
+                // メニュー項目の表示
+                for(let i = 0; i < TITLE_MENU_ITEMS.length; i++) {
+                    if (titleSelectIndex === i) {
+                        ctx.fillStyle = '#00ffff';
+                        ctx.font = '36px Arial Black';
+                        ctx.fillText('➔ ' + TITLE_MENU_ITEMS[i], canvas.width / 2, 320 + i * 65);
+                    } else {
+                        ctx.fillStyle = '#666';
+                        ctx.font = '30px Arial';
+                        ctx.fillText(TITLE_MENU_ITEMS[i], canvas.width / 2, 320 + i * 65);
+                    }
                 }
+                
                 ctx.fillStyle = '#ffcc00'; ctx.font = '20px Arial';
-                ctx.fillText('W / X: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 540);
+                ctx.fillText('W / X: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 620);
                 return;
             }
 
@@ -942,7 +940,7 @@
                 ctx.fillText('PRESS SPACE TO RETURN TO TITLE', canvas.width / 2, 440);
             }
 
-            if (selectModeIndex === 1 && gameMode === 'BATTLE') {
+            if (titleSelectIndex === 3 && gameMode === 'BATTLE') { // TRAINING MODE
                 const p1GettingHit = player1.state === 'hitstun' || player1.state === 'knockdown' || player1.state === 'air_hit' || player1.comboTimer > 0;
                 if (!p1GettingHit && player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
                 
@@ -953,12 +951,10 @@
                 if (player2.meter < 3.0) { player2.addMeter(0.1); }
             }
 
-            // --- オンライン対戦時／ローカル対戦時での操作オブジェクトの切り替え ---
             let p1Dir = 5;
             if (isOnlineMode) {
                 if (myPlayerType === 'p1') {
                     p1Dir = getJoystickDirection();
-                    // 自分の最新状態を送信
                     socket.emit('playerUpdate', {
                         roomId: currentRoomId, playerType: 'p1',
                         x: player1.x, y: player1.y, vx: player1.vx, vy: player1.vy,
@@ -966,13 +962,11 @@
                         isCrouching: player1.isCrouching, height: player1.height, activeMoveKey: activeMoveKey
                     });
                 } else {
-                    // P2側から見た操作：サーバーから受け取ったp2Dir（後述のsocket受信で代入）を適用するが、
-                    // P1の移動処理自体は送られてきた座標同期に任せるためここでは5のままにする
                     p1Dir = 5;
                 }
             } else {
                 p1Dir = getJoystickDirection();
-                if (gameMode === 'BATTLE' && selectModeIndex === 1 && dummyStateSetting === 1) {
+                if (gameMode === 'BATTLE' && titleSelectIndex === 3 && dummyStateSetting === 1) {
                     updateCPU(); player2.update(2); 
                 } else {
                     updateCPU(); player2.update(5);
@@ -983,21 +977,43 @@
             const disableMoveStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
             if (!disableMoveStates.includes(player1.state) && (!isOnlineMode || myPlayerType === 'p1')) {
                 player1.facing = player1.x < player2.x ? 1 : -1;
-                if ([7, 8, 9].includes(p1Dir) && player1.isGrounded) player1.vy = -18;
-                if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; else player1.vx = 0;
+                
+                // しゃがみ中でない場合のみジャンプを許可
+                if ([7, 8, 9].includes(p1Dir) && player1.isGrounded && !player1.isCrouching) {
+                    player1.vy = -18;
+                }
+                
+                // しゃがみ中でない場合のみ左右移動を許可
+                if (!player1.isCrouching) {
+                    if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; 
+                    else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; 
+                    else player1.vx = 0;
+                } else {
+                    player1.vx = 0;
+                }
             } else if (player1.state !== 'attack' || !player1.currentAttack || !player1.currentAttack.name.includes('竜巻')) { 
                 if(player1.state === 'attack' && player1.isGrounded) player1.vx = 0; 
             }
             player1.update(p1Dir);
 
-            // プレイヤー2の移動（オンライン時はP2クライアントから送られてくるデータを反映）
+            // プレイヤー2の移動
             if (isOnlineMode) {
                 if (myPlayerType === 'p2') {
                     let p2Dir = getJoystickDirection();
                     if (!disableMoveStates.includes(player2.state)) {
                         player2.facing = player2.x < player1.x ? 1 : -1;
-                        if ([7, 8, 9].includes(p2Dir) && player2.isGrounded) player2.vy = -18;
-                        if ([1, 4, 7].includes(p2Dir)) player2.vx = -6; else if ([3, 6, 9].includes(p2Dir)) player2.vx = 6; else player2.vx = 0;
+                        
+                        if ([7, 8, 9].includes(p2Dir) && player2.isGrounded && !player2.isCrouching) {
+                            player2.vy = -18;
+                        }
+                        
+                        if (!player2.isCrouching) {
+                            if ([1, 4, 7].includes(p2Dir)) player2.vx = -6; 
+                            else if ([3, 6, 9].includes(p2Dir)) player2.vx = 6; 
+                            else player2.vx = 0;
+                        } else {
+                            player2.vx = 0;
+                        }
                     } else if (player2.state !== 'attack' || !player2.currentAttack || !player2.currentAttack.name.includes('竜巻')) {
                         if(player2.state === 'attack' && player2.isGrounded) player2.vx = 0;
                     }
@@ -1010,12 +1026,11 @@
                         isCrouching: player2.isCrouching, height: player2.height, activeMoveKey: activeMoveKey
                     });
                 } else {
-                    // P1側クライアントでは、受け取った座標の更新のみ行う
                     player2.update(5);
                 }
             }
 
-            // 飛び道具の処理
+            // 飛び道具・衝突判定
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 let p = projectiles[i]; p.update(); p.draw();
                 let target = p.owner === player1 ? player2 : player1;
@@ -1026,7 +1041,6 @@
                 if (!p.isActive) projectiles.splice(i, 1);
             }
 
-            // 通常攻撃判定（P1からP2へ）
             if (player1.state === 'attack' && player1.currentAttack && !player1.hasHitThisAttack && !player1.currentAttack.isProjectile && player1.multihitCount === 0) {
                 if (player1.stateTimer > player1.currentAttack.rec) {
                     if (player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
@@ -1037,7 +1051,6 @@
                     }
                 }
             }
-            // 通常攻撃判定（P2からP1へ）
             if (player2.state === 'attack' && player2.currentAttack && !player2.hasHitThisAttack && !player2.currentAttack.isProjectile && player2.multihitCount === 0) {
                 if (player2.stateTimer > player2.currentAttack.rec) {
                     if (player1.state !== 'knockdown' && player1.state !== 'guardstun') {
@@ -1058,7 +1071,6 @@
             const now = Date.now(); inputBuffer = inputBuffer.filter(i => now - i.time < 400); 
             const historyStr = inputBuffer.map(i => i.dir).join(''); let targetPattern = pattern;
             
-            // 操作キャラクターの向き基準でコマンド入力を反転
             let currentFacing = 1;
             if (isOnlineMode) {
                 currentFacing = (myPlayerType === 'p1') ? player1.facing : player2.facing;
@@ -1079,20 +1091,32 @@
 
             if (isSpace) { event.preventDefault(); }
 
+            // 新タイトルメニュー画面の操作
             if (gameMode === 'TITLE') {
-                if (isSpace) { gameMode = 'MODE_SELECT'; } return;
+                if (key === 'w') { 
+                    titleSelectIndex = (titleSelectIndex - 1 + 4) % 4; 
+                }
+                if (key === 'x') { 
+                    titleSelectIndex = (titleSelectIndex + 1) % 4; 
+                }
+                if (isSpace) { 
+                    if (titleSelectIndex === 0) {
+                        setupRandomMatch();
+                    } else if (titleSelectIndex === 1) {
+                        setupOnlineSocket();
+                    } else {
+                        // CPU ARCADE 又は TRAINING MODE
+                        gameMode = 'CHAR_SELECT'; 
+                    }
+                } 
+                return;
             }
-            if (gameMode === 'MODE_SELECT') {
-                if (key === 'w') { selectModeIndex = 0; }
-                if (key === 'x') { selectModeIndex = 1; }
-                if (isSpace) { gameMode = 'CHAR_SELECT'; } return;
-            }
+            
             if (gameMode === 'CHAR_SELECT') {
                 if (key === 'a') { selectIndex = (selectIndex - 1 + 3) % 3; }
                 if (key === 'd') { selectIndex = (selectIndex + 1) % 3; }
                 if (isSpace) { 
                     if (isOnlineMode) {
-                        // オンライン対戦時は相手の準備も待つため、ここではセレクト画面表示維持のまま通信を待つ形にする
                         socket.emit('characterSelected', { roomId: currentRoomId, playerType: myPlayerType, selectIndex: selectIndex });
                         document.getElementById('p1-name').innerText = "READY... WALTING FOR OPPONENT";
                     } else {
@@ -1107,7 +1131,7 @@
                     document.getElementById('game-ui').style.display = 'none'; 
                     document.getElementById('training-panel').style.display = 'none'; 
                     if (isOnlineMode) {
-                        document.getElementById('room-ui').style.display = 'flex';
+                        document.getElementById('room-ui').style.display = 'none';
                         document.getElementById('room-status').innerText = "";
                         isOnlineMode = false;
                     }
@@ -1115,13 +1139,12 @@
                 return;
             }
 
-            if (gameMode === 'BATTLE' && selectModeIndex === 1 && key === 't' && !isOnlineMode) {
+            if (gameMode === 'BATTLE' && titleSelectIndex === 3 && key === 't' && !isOnlineMode) {
                 dummyStateSetting = (dummyStateSetting + 1) % 4;
                 document.getElementById('dummy-state-text').innerText = DUMMY_STRINGS[dummyStateSetting];
                 return;
             }
 
-            // 操作対象のファイターを決定
             let myFighter = player1;
             if (isOnlineMode) {
                 myFighter = (myPlayerType === 'p1') ? player1 : player2;
@@ -1147,7 +1170,6 @@
                 let success = false;
                 let isSpecial = false;
 
-                // 必殺技コマンド受付
                 if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key) || isSpace)) {
                     isSpecial = true;
                     if (strength === 3) {
@@ -1194,7 +1216,6 @@
                     inputBuffer = []; 
                 }
 
-                // 通常技の受付
                 if (!isSpecial && !isSpace) {
                     success = myFighter.startNormalAttack(key, currentDir);
                     if (!success) {
@@ -1214,7 +1235,7 @@
             }
         });
 
-        // --- オンライン通信・Socket.io 設定用イベントリスナー ---
+        // --- オンライン対戦用 Socket.io イベント ---
         document.getElementById('join-room-btn').addEventListener('click', () => {
             const roomId = document.getElementById('room-id-input').value.trim();
             if (!roomId) {
@@ -1222,8 +1243,7 @@
                 return;
             }
 
-            // Socket.ioサーバーへ接続
-            socket = io(https://block-fight.onrender.com/);
+            socket = io("https://block-fight.onrender.com/");
             currentRoomId = roomId;
             document.getElementById('room-status').innerText = "サーバーに接続中...";
 
@@ -1243,11 +1263,10 @@
                 setTimeout(() => {
                     document.getElementById('room-ui').style.display = 'none';
                     isOnlineMode = true;
-                    gameMode = 'MODE_SELECT'; // タイトルから自動的にモード選択・キャラ選択へスキップ
+                    gameMode = 'CHAR_SELECT'; 
                 }, 1000);
             });
 
-            // 相手クライアントからの毎フレーム状態同期を受信
             socket.on('opponentUpdate', (data) => {
                 let opFighter = (data.playerType === 'p1') ? player1 : player2;
                 if (!opFighter) return;
@@ -1266,12 +1285,10 @@
                     player2MoveKey = data.activeMoveKey;
                 }
                 
-                // 体力バーの同期更新
                 const id = (data.playerType === 'p1') ? 'p1-hp' : 'p2-hp';
                 document.getElementById(id).style.width = data.hp + '%';
             });
 
-            // 相手クライアントからの攻撃イベント発動を受信
             socket.on('opponentAttack', (data) => {
                 let opFighter = (data.playerType === 'p1') ? player1 : player2;
                 if (!opFighter) return;
@@ -1285,10 +1302,8 @@
                 }
             });
 
-            // 相手のキャラクター選択完了の受信
             socket.on('opponentCharacterSelected', (data) => {
                 if (data.playerType !== myPlayerType) {
-                    // 1P/2P両方が揃ったらバトルを開始
                     startBattle();
                 }
             });
@@ -1298,15 +1313,6 @@
                 location.reload();
             });
         });
-
-        // サーバー側で中継されるキャラクター選択用イベント
-        if (socket) {
-            socket.on('characterSelected', (data) => {
-                if (data.playerType !== myPlayerType) {
-                    startBattle();
-                }
-            });
-        }
 
         animate();
     </script>
