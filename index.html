@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Street Fighter II Clone - Square Edition</title>
+    <style>
+        body {
+            background-color: #222;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+        canvas {
+            border: 4px solid #555;
+            background-color: #111;
+            box-shadow: 0px 0px 20px rgba(0,0,0,0.8);
+        }
+        .ui-container {
+            width: 800px;
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .hp-bar-container {
+            width: 340px;
+            height: 24px;
+            background-color: #555;
+            border: 2px solid #fff;
+            position: relative;
+        }
+        .hp-bar {
+            height: 100%;
+            background-color: #ffcc00;
+            width: 100%;
+            transition: width 0.1s ease-out;
+        }
+        .p2-container .hp-bar {
+            float: right;
+            background-color: #ffcc00;
+        }
+        .combo-counter {
+            position: absolute;
+            top: 40px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff3333;
+            text-shadow: 2px 2px #000;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        #p1-combo { left: 10px; }
+        #p2-combo { right: 10px; }
+        .controls {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaa;
+            text-align: center;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-container">
+        <div>
+            <div style="font-weight: bold; margin-bottom: 2px;">PLAYER 1 (YOU)</div>
+            <div class="hp-bar-container"><div id="p1-hp" class="hp-bar"></div></div>
+        </div>
+        <div style="font-size: 28px; font-weight: bold; color: #ff3333; margin-top: 5px;">VS</div>
+        <div class="p2-container" style="text-align: right;">
+            <div style="font-weight: bold; margin-bottom: 2px;">CPU (ENEMY)</div>
+            <div class="hp-bar-container"><div id="p2-hp" class="hp-bar"></div></div>
+        </div>
+        
+        <div id="p1-combo" class="combo-counter">0 HIT!</div>
+        <div id="p2-combo" class="combo-counter">0 HIT!</div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div class="controls">
+        <strong>【移動】</strong> A: 左 / D: 右 / W: ジャンプ / S: しゃがみ <br>
+        <strong>【パンチ】</strong> J: 弱 / K: 中 / L: 強 | <strong>【キック】</strong> U: 弱 / I: 中 / O: 強 <br>
+        <strong>【必殺技】</strong> 波動拳: 下(S) → 右(D) ＋ パンチのいずれか (※右向き時)
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ゲームシステム定数
+        const GRAVITY = 0.6;
+        const FLOOR_Y = canvas.height - 40;
+
+        // 各種攻撃のデータ定義（フレーム数、ダメージ、判定の大きさ、ヒットスタン等）
+        const ATTACK_DATA = {
+            lp: { name: '弱P', damage: 3,  width: 60,  height: 20, offsetX: 50,  offsetY: 30, activeFrames: 6,  recoveryFrames: 6,  hitStun: 12 },
+            mp: { name: '中P', damage: 7,  width: 80,  height: 25, offsetX: 50,  offsetY: 25, activeFrames: 8,  recoveryFrames: 12, hitStun: 18 },
+            hp: { name: '強P', damage: 13, width: 100, height: 30, offsetX: 50,  offsetY: 20, activeFrames: 10, recoveryFrames: 18, hitStun: 26 },
+            lk: { name: '弱K', damage: 4,  width: 70,  height: 20, offsetX: 50,  offsetY: 90, activeFrames: 6,  recoveryFrames: 7,  hitStun: 13 },
+            mk: { name: '中K', damage: 8,  width: 90,  height: 25, offsetX: 50,  offsetY: 85, activeFrames: 9,  recoveryFrames: 14, hitStun: 19 },
+            hk: { name: '強K', damage: 15, width: 115, height: 35, offsetX: 50,  offsetY: 75, activeFrames: 12, recoveryFrames: 22, hitStun: 28 }
+        };
+
+        // 波動拳（飛び道具）クラス
+        class Fireball {
+            constructor(x, y, direction, owner) {
+                this.x = x;
+                this.y = y;
+                this.width = 40;
+                this.height = 30;
+                this.speed = 7 * direction;
+                this.owner = owner;
+                this.damage = 12;
+                this.hitStun = 25;
+                this.isActive = true;
+            }
+            update() {
+                this.x += this.speed;
+                if (this.x < 0 || this.x > canvas.width) this.isActive = false;
+            }
+            draw() {
+                ctx.fillStyle = '#00ffff';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+
+        // キャラクタークラス
+        class Fighter {
+            constructor({ x, y, color, isCPU }) {
+                this.x = x;
+                this.y = y;
+                this.width = 60;
+                this.height = 130;
+                this.vx = 0;
+                this.vy = 0;
+                this.color = color;
+                this.isCPU = isCPU;
+                this.hp = 100;
+                this.facing = 1; // 1 = 右向き, -1 = 左向き
+                this.isGrounded = false;
+
+                // 状態管理
+                this.state = 'idle'; // idle, attack, hitstun
+                this.stateTimer = 0;
+                this.currentAttack = null;
+                this.hasHitThisAttack = false;
+
+                // コンボ管理
+                this.comboCount = 0;
+                this.comboTimer = 0;
+
+                // 攻撃判定用オブジェクト
+                this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
+            }
+
+            draw() {
+                // 状態に応じたカラーチェンジ
+                if (this.state === 'hitstun') {
+                    ctx.fillStyle = '#ff6666'; // 被撃中（赤）
+                } else if (this.state === 'attack') {
+                    ctx.fillStyle = '#ffcc00'; // 攻撃硬直（黄）
+                } else {
+                    ctx.fillStyle = this.color;
+                }
+
+                // 本体描画
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+
+                // 向いている方向がわかる「目」の描画
+                ctx.fillStyle = '#000';
+                let eyeX = this.facing === 1 ? this.x + this.width - 15 : this.x + 5;
+                ctx.fillRect(eyeX, this.y + 15, 10, 10);
+
+                // 攻撃判定のアクティブフレーム中なら緑の枠を描画
+                if (this.state === 'attack' && this.stateTimer > this.currentAttack.recoveryFrames) {
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.4)';
+                    ctx.fillRect(this.attackBox.x, this.attackBox.y, this.attackBox.width, this.attackBox.height);
+                }
+            }
+
+            update() {
+                // 重力処理
+                this.y += this.vy;
+                if (this.y + this.height >= FLOOR_Y) {
+                    this.y = FLOOR_Y - this.height;
+                    this.vy = 0;
+                    this.isGrounded = true;
+                } else {
+                    this.vy += GRAVITY;
+                    this.isGrounded = false;
+                }
+
+                // 左右移動の適用
+                this.x += this.vx;
+                // 画面外へのはみ出し防止
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+                // タイマーと状態の更新
+                if (this.stateTimer > 0) {
+                    this.stateTimer--;
+                    if (this.stateTimer === 0) {
+                        this.state = 'idle';
+                        this.currentAttack = null;
+                    }
+                }
+
+                // 攻撃中であれば、攻撃判定ボックスの位置をリアルタイム計算
+                if (this.state === 'attack' && this.currentAttack) {
+                    const data = this.currentAttack;
+                    this.attackBox.width = data.width;
+                    this.attackBox.height = data.height;
+                    this.attackBox.y = this.y + data.offsetY;
+                    
+                    if (this.facing === 1) {
+                        this.attackBox.x = this.x + data.offsetX;
+                    } else {
+                        this.attackBox.x = this.x - data.width;
+                    }
+                }
+
+                // コンボ受付タイマーの更新
+                if (this.comboTimer > 0) {
+                    this.comboTimer--;
+                    if (this.comboTimer === 0) {
+                        this.comboCount = 0;
+                        document.getElementById(this.isCPU ? 'p2-combo' : 'p1-combo').style.opacity = 0;
+                    }
+                }
+            }
+
+            // 通常技の発動
+            startAttack(type) {
+                if (this.state === 'hitstun') return;
+                
+                // キャンセルロジック: すでに攻撃中でも、技がヒットしていれば次の技で上書き(キャンセル)可能にする
+                if (this.state === 'attack' && !this.hasHitThisAttack) return;
+
+                const data = ATTACK_DATA[type];
+                this.state = 'attack';
+                this.currentAttack = data;
+                this.hasHitThisAttack = false;
+                // 総フレーム ＝ アクティブ（攻撃判定持続） ＋ リカバリー（後隙）
+                this.stateTimer = data.activeFrames + data.recoveryFrames;
+            }
+
+            // 波動拳の発動
+            startHadouken() {
+                if (this.state === 'hitstun') return;
+                if (this.state === 'attack' && !this.hasHitThisAttack) return; // ヒット時のみキャンセル可
+
+                this.state = 'attack';
+                // 波動拳用の仮データ（硬直用）
+                this.currentAttack = { recoveryFrames: 15, activeFrames: 0, name: '波動拳' };
+                this.stateTimer = 25;
+                this.hasHitThisAttack = true;
+
+                let spawnX = this.facing === 1 ? this.x + this.width + 5 : this.x - 45;
+                projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this));
+            }
+
+            // 被撃時の処理
+            takeDamage(damage, hitStunFrame) {
+                this.hp -= damage;
+                if (this.hp < 0) this.hp = 0;
+                
+                // HPバーの更新
+                const id = this.isCPU ? 'p2-hp' : 'p1-hp';
+                document.getElementById(id).style.width = this.hp + '%';
+
+                // 被撃側のコンボカウンターを回す
+                this.comboCount++;
+                this.comboTimer = hitStunFrame + 15; // のけぞり時間＋猶予
+                const comboId = this.isCPU ? 'p2-combo' : 'p1-combo';
+                const comboEl = document.getElementById(comboId);
+                if (this.comboCount > 1) {
+                    comboEl.innerText = `${this.comboCount} HIT!`;
+                    comboEl.style.opacity = 1;
+                }
+
+                // ヒットスタン状態へ移行
+                this.state = 'hitstun';
+                this.stateTimer = hitStunFrame;
+                this.currentAttack = null;
+                
+                // ノックバック（少し後ろに弾かれる）
+                this.x -= this.facing * 12;
+            }
+        }
+
+        // インスタンス化
+        const player1 = new Fighter({ x: 150, y: 0, color: '#3366ff', isCPU: false });
+        const player2 = new Fighter({ x: 550, y: 0, color: '#ff3333', isCPU: true });
+        let projectiles = [];
+
+        // キー入力状態の管理（移動用）
+        const keys = { a: false, d: false };
+
+        // コマンド入力用の履歴バッファ
+        let inputBuffer = [];
+
+        // 衝突判定（AABB）
+        function checkCollision(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        // ==========================================
+        // CPUのAIロジック
+        // ==========================================
+        let cpuActionTimer = 0;
+        function updateCPU() {
+            if (player2.state === 'hitstun') return;
+
+            // 常にプレイヤーの方向を向く
+            player2.facing = player1.x > player2.x ? 1 : -1;
+
+            const distance = Math.abs(player1.x - player2.x);
+            cpuActionTimer--;
+
+            if (player2.state === 'idle') {
+                // 基本移動：適度に近づく
+                if (distance > 130) {
+                    player2.vx = player2.facing * 2.5;
+                } else if (distance < 70) {
+                    player2.vx = -player2.facing * 2; // 近すぎたら離れる
+                } else {
+                    player2.vx = 0;
+                }
+
+                // ランダムジャンプ
+                if (Math.random() < 0.005 && player2.isGrounded) {
+                    player2.vy = -13;
+                }
+
+                // 攻撃ロジック（タイマーごとにランダム発動）
+                if (cpuActionTimer <= 0) {
+                    cpuActionTimer = 30 + Math.random() * 40; // 次の行動までのクールダウン
+
+                    if (distance <= 160) {
+                        const rand = Math.random();
+                        if (rand < 0.3) player2.startAttack('lp');
+                        else if (rand < 0.5) player2.startAttack('lk');
+                        else if (rand < 0.7) player2.startAttack('mp');
+                        else if (rand < 0.85) player2.startAttack('hp');
+                        else player2.startAttack('hk');
+                    } else {
+                        // 遠距離にいるとき低確率で波動拳を撃ってくる
+                        if (Math.random() < 0.25) {
+                            player2.startHadouken();
+                        }
+                    }
+                }
+            } else {
+                player2.vx = 0; // 攻撃中などは移動停止
+            }
+        }
+
+        // ==========================================
+        // メインゲームループ
+        // ==========================================
+        function animate() {
+            window.requestAnimationFrame(animate);
+
+            // 画面リセット
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#444';
+            ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y); // 床
+
+            // 位置関係による自動振り向き
+            if (player1.state !== 'attack' && player1.state !== 'hitstun') {
+                player1.facing = player1.x < player2.x ? 1 : -1;
+            }
+
+            // P1の移動処理
+            if (player1.state === 'idle') {
+                if (keys.a) player1.vx = -4.5;
+                else if (keys.d) player1.vx = 4.5;
+                else player1.vx = 0;
+            } else {
+                player1.vx = 0;
+            }
+
+            // 更新処理
+            player1.update();
+            updateCPU();
+            player2.update();
+
+            // 飛び道具の更新・処理
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                let p = projectiles[i];
+                p.update();
+                p.draw();
+
+                // 敵への当たり判定
+                let target = p.owner === player1 ? player2 : player1;
+                let targetRect = { x: target.x, y: target.y, width: target.width, height: target.height };
+                let projRect = { x: p.x, y: p.y, width: p.width, height: p.height };
+
+                if (checkCollision(projRect, targetRect) && p.isActive) {
+                    target.takeDamage(p.damage, p.hitStun);
+                    p.isActive = false;
+                }
+
+                if (!p.isActive) projectiles.splice(i, 1);
+            }
+
+            // P1の通常技の当たり判定チェック
+            if (player1.state === 'attack' && player1.currentAttack && !player1.hasHitThisAttack) {
+                // アクティブフレーム（攻撃判定が出ている時間）のみ判定
+                if (player1.stateTimer > player1.currentAttack.recoveryFrames) {
+                    if (checkCollision(player1.attackBox, player2)) {
+                        player2.takeDamage(player1.currentAttack.damage, player1.currentAttack.hitStun);
+                        player1.hasHitThisAttack = true; // 1回のアクションで1ヒットのみ
+                    }
+                }
+            }
+
+            // CPUの通常技の当たり判定チェック
+            if (player2.state === 'attack' && player2.currentAttack && !player2.hasHitThisAttack) {
+                if (player2.stateTimer > player2.currentAttack.recoveryFrames) {
+                    if (checkCollision(player2.attackBox, player1)) {
+                        player1.takeDamage(player2.currentAttack.damage, player2.currentAttack.hitStun);
+                        player2.hasHitThisAttack = true;
+                    }
+                }
+            }
+
+            // 描画
+            player1.draw();
+            player2.draw();
+        }
+
+        // ==========================================
+        // コマンド入力の解析システム
+        // ==========================================
+        function checkHadoukenCommand() {
+            const now = Date.now();
+            // 過去300ms以内の有効な入力だけ残す
+            inputBuffer = inputBuffer.filter(i => now - i.time < 300);
+            
+            // 入力履歴を文字列にする (例: "s,d")
+            const historyStr = inputBuffer.map(i => i.key).join(',');
+            
+            // 下(s)の後に右(d)[※右向き時] または 左(a)[※左向き時] が入っているかチェック
+            if (player1.facing === 1 && historyStr.includes('s,d')) {
+                inputBuffer = []; // コマンドが成立したらバッファをクリア
+                return true;
+            } else if (player1.facing === -1 && historyStr.includes('s,a')) {
+                inputBuffer = [];
+                return true;
+            }
+            return false;
+        }
+
+        // キーボードイベント
+        window.addEventListener('keydown', (event) => {
+            const key = event.key.toLowerCase();
+
+            // 移動キーの記録
+            if (key === 'a') keys.a = true;
+            if (key === 'd') keys.d = true;
+            
+            // 方向キーの履歴をコマンドバッファに保存
+            if (['s', 'a', 'd'].includes(key)) {
+                // 直前と同じキーが連続して入るのを防止して綺麗に記録
+                if (inputBuffer.length === 0 || inputBuffer[inputBuffer.length - 1].key !== key) {
+                    inputBuffer.push({ key: key, time: Date.now() });
+                }
+            }
+
+            // ジャンプ (Wキー)
+            if (key === 'w' && player1.isGrounded && player1.state === 'idle') {
+                player1.vy = -13;
+            }
+
+            // 6ボタン通常攻撃 ＆ コマンドチェック
+            // パンチ系 (J, K, L)
+            if (['j', 'k', 'l'].includes(key)) {
+                if (checkHadoukenCommand()) {
+                    player1.startHadouken();
+                } else {
+                    if (key === 'j') player1.startAttack('lp');
+                    if (key === 'k') player1.startAttack('mp');
+                    if (key === 'l') player1.startAttack('hp');
+                }
+            }
+            // キック系 (U, I, O)
+            if (key === 'u') player1.startAttack('lk');
+            if (key === 'i') player1.startAttack('mk');
+            if (key === 'o') player1.startAttack('hk');
+        });
+
+        window.addEventListener('keyup', (event) => {
+            const key = event.key.toLowerCase();
+            if (key === 'a') keys.a = false;
+            if (key === 'd') keys.d = false;
+        });
+
+        // 実行開始
+        animate();
+    </script>
+</body>
+</html>
