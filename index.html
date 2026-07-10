@@ -33,7 +33,7 @@
         .gauge-bar { height: 100%; background: linear-gradient(to right, #00ffcc, #0099ff); width: 0%; }
         .gauge-text { position: absolute; right: 8px; top: -2px; font-size: 12px; font-weight: bold; color: #fff; text-shadow: 1px 1px #000; }
         
-        .combo-counter { position: absolute; top: 100px; font-size: 36px; font-weight: bold; color: #ff3333; text-shadow: 3px 3px #000; opacity: 0; }
+        .combo-counter { position: absolute; top: 100px; font-size: 36px; font-weight: bold; color: #ff3333; text-shadow: 3px 3px #000; opacity: 0; transition: opacity 0.2s; }
         #p1-combo { left: 5%; } #p2-combo { right: 5%; }
         .status-text { font-size: 18px; font-weight: bold; color: #00ffff; height: 22px; text-shadow: 1px 1px #000; }
         .frame-text { font-size: 14px; color: #ffcc00; }
@@ -93,14 +93,12 @@
         const GRAVITY = 0.8;
         const FLOOR_Y = canvas.height - 60;
         
-        // ゲームステート ('TITLE', 'MODE_SELECT', 'CHAR_SELECT', 'BATTLE', 'GAME_OVER')
         let gameMode = 'TITLE'; 
-        let selectModeIndex = 0; // 0: ARCADE BATTLE, 1: TRAINING MODE
+        let selectModeIndex = 0;
         let selectIndex = 0; 
         const CHAR_COLORS = ['#ffffff', '#ff3333', '#3366ff'];
         const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
 
-        // トレーニングモード設定 (0: STAND, 1: CROUCH, 2: GUARD, 3: PARRY)
         let dummyStateSetting = 0;
         const DUMMY_STRINGS = ['立ち (IDLE)', 'しゃがみ (CROUCH)', '常時ガード (GUARD)', 'ジャストパリィ (PARRY)'];
 
@@ -118,6 +116,7 @@
                 this.isActive = true; 
                 this.isEX = isEX; 
                 this.hits = isEX ? 3 : 1; 
+                this.knockdown = isEX; // EX波動拳はダウンを奪う
             }
             update() { 
                 this.x += this.speed; 
@@ -139,8 +138,10 @@
                 this.guardShield = 100; this.isGuardCrushed = false; this.guardCrushTimer = 0;
                 this.facing = 1; this.isGrounded = false; this.state = 'idle'; this.stateTimer = 0;
                 this.currentAttack = null; this.hasHitThisAttack = false; this.comboCount = 0; this.comboTimer = 0;
-                this.attackBox = { x: 0, y: 0, width: 0, height: 0 }; this.isCrouching = false; this.invincible = false;
+                this.attackBox = { x: 0, y: 0, width: 0, height: 0 }; this.isCrouching = false; 
+                this.invincible = false; this.invincibleTimer = 0;
                 this.cpuGuardType = null; this.multihitCount = 0; this.multihitTimer = 0;
+                this.tatsuSpeed = 0;
             }
 
             addMeter(amount) {
@@ -162,7 +163,8 @@
 
             draw() {
                 if (this.isGuardCrushed) ctx.fillStyle = '#ff33cc'; 
-                else if (this.invincible) ctx.fillStyle = '#ffff66'; 
+                else if (this.invincible && this.state !== 'knockdown') ctx.fillStyle = '#ffff66'; 
+                else if (this.state === 'knockdown') ctx.fillStyle = '#884444'; // ダウン中の色
                 else if (this.state === 'hitstun') ctx.fillStyle = '#ff4444';
                 else if (this.state === 'guardstun') ctx.fillStyle = '#44ff44';
                 else if (this.state === 'attack') ctx.fillStyle = '#ffaa00';
@@ -171,11 +173,16 @@
                     else if (!this.isCPU && (activeMoveKey === 'a' || activeMoveKey === 'z')) ctx.fillStyle = '#00ffff';
                     else ctx.fillStyle = this.color;
                 }
-                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // ダウン中の見た目の変化 (高さを潰す)
+                let drawHeight = this.state === 'knockdown' ? this.baseHeight * 0.3 : this.height;
+                let drawY = this.state === 'knockdown' ? this.y + (this.baseHeight - drawHeight) : this.y;
+                
+                ctx.fillRect(this.x, drawY, this.width, drawHeight);
                 
                 ctx.fillStyle = '#000';
                 let eyeX = this.facing === 1 ? this.x + this.width - 25 : this.x + 15;
-                ctx.fillRect(eyeX, this.y + 25, 15, 15);
+                if(this.state !== 'knockdown') ctx.fillRect(eyeX, drawY + 25, 15, 15);
 
                 if (this.state === 'attack' && this.attackBox.width > 0) {
                     ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
@@ -184,6 +191,14 @@
             }
 
             update(currentDirNum) {
+                // 無敵タイマーの処理
+                if (this.invincibleTimer > 0) {
+                    this.invincibleTimer--;
+                    this.invincible = true;
+                } else if (this.state === 'idle' && !this.currentAttack) {
+                    this.invincible = false;
+                }
+
                 if (this.isGuardCrushed) {
                     this.guardCrushTimer--;
                     if (this.guardCrushTimer <= 0) {
@@ -195,16 +210,31 @@
                     document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').style.width = this.guardShield + '%';
                 }
 
-                if (this.state !== 'attack' && this.state !== 'hitstun' && [1, 2, 3].includes(currentDirNum)) {
+                if (this.state !== 'attack' && this.state !== 'hitstun' && this.state !== 'knockdown' && [1, 2, 3].includes(currentDirNum)) {
                     this.isCrouching = true; this.height = this.baseHeight * 0.7;
-                } else if (this.state !== 'attack' && this.state !== 'hitstun') {
+                } else if (this.state !== 'attack' && this.state !== 'hitstun' && this.state !== 'knockdown') {
                     this.isCrouching = false; this.height = this.baseHeight;
+                }
+
+                // 竜巻旋風脚の滞空と前進処理
+                if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
+                    this.vx = this.tatsuSpeed;
+                    if (this.vy > 0 && !this.isGrounded) this.vy = 0; // 重力を相殺して浮遊
                 }
 
                 this.y += this.vy;
                 if (this.y + this.height >= FLOOR_Y) {
-                    this.y = FLOOR_Y - this.height; this.vy = 0; this.isGrounded = true;
-                } else { this.vy += GRAVITY; this.isGrounded = false; }
+                    this.y = FLOOR_Y - this.height; 
+                    this.vy = 0; 
+                    this.isGrounded = true;
+                    
+                    if (this.state === 'knockdown') {
+                        this.vx = 0; // ダウンして地面に落ちたら横移動を止める
+                    }
+                } else { 
+                    this.vy += GRAVITY; 
+                    this.isGrounded = false; 
+                }
 
                 this.x += this.vx;
                 if (this.x < 0) this.x = 0; if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
@@ -223,8 +253,15 @@
                 if (this.stateTimer > 0) {
                     this.stateTimer--;
                     if (this.stateTimer === 0) { 
-                        this.state = 'idle'; this.currentAttack = null; this.invincible = false; this.multihitCount = 0;
-                        this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
+                        if (this.state === 'knockdown') {
+                            // 起き上がり処理
+                            this.state = 'idle';
+                            this.invincibleTimer = 20; // 起き上がり後のリバーサル無敵
+                            this.height = this.baseHeight;
+                        } else {
+                            this.state = 'idle'; this.currentAttack = null; this.multihitCount = 0;
+                            this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
+                        }
                     }
                 }
 
@@ -245,8 +282,7 @@
             }
 
             startNormalAttack(btnType, dirNum) {
-                if (this.state !== 'idle' && this.isGrounded) return;
-                if (!this.isGrounded && this.state !== 'idle') return;
+                if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown') return;
 
                 let isPunch = ['j', 'k', 'l'].includes(btnType);
                 let isKick = ['u', 'i', 'o'].includes(btnType);
@@ -258,37 +294,42 @@
                 let isCrouching = [1, 2, 3].includes(dirNum) && this.isGrounded;
                 let isJumping = !this.isGrounded;
                 
+                // --- キャンセルシステムの判定 ---
+                let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
+                let isStartup = (this.state === 'attack' && this.currentAttack && this.stateTimer > (this.currentAttack.active + this.currentAttack.rec));
+                let isAirborne = (!this.isGrounded && this.state !== 'idle');
+                
+                if (this.state !== 'idle' && this.isGrounded && !isRapid && !isStartup) return;
+                if (isAirborne) return;
+
                 let stanceName = isJumping ? 'ジャンプ' : (isCrouching ? 'しゃがみ' : '立ち');
                 let name = `${stanceName}${strengthName}${typeName}`;
                 let type = isCrouching ? (isKick ? 'low' : 'high') : (isJumping ? 'overhead' : 'high');
                 
-                // 特殊技：鎖骨割り（前中P）
                 let isOverhead = !isJumping && !isCrouching && isPunch && strengthNum === 1 && (this.facing === 1 ? dirNum === 6 : dirNum === 4);
-                if (isOverhead) {
-                    name = '鎖骨割り';
-                    type = 'overhead';
-                }
+                if (isOverhead) { name = '鎖骨割り'; type = 'overhead'; }
 
-                // 特殊技：足払い（しゃがみ強K）
                 let isSweep = isCrouching && isKick && strengthNum === 2;
-                if (isSweep) {
-                    name = '足払い(屈強K)';
-                }
+                if (isSweep) { name = '足払い(屈強K)'; }
 
                 this.state = 'attack'; this.hasHitThisAttack = false;
                 
+                // コンボが繋がりやすいようフレーム調整
                 let dmg = 4 + (strengthNum * 4); 
-                let startup = 4 + (strengthNum * 3);
-                let active = 4 + (strengthNum * 2);
-                let rec = 8 + (strengthNum * 6);
-                let hStun = 14 + (strengthNum * 4);
+                let startup = 3 + (strengthNum * 2);
+                let active = 3 + (strengthNum * 2);
+                let rec = 6 + (strengthNum * 5); // 硬直を減らす
+                let hStun = 14 + (strengthNum * 5); // ヒットスタンを増やす
                 let gStun = 10 + (strengthNum * 3);
                 
                 this.currentAttack = { 
                     name: name, damage: dmg, 
                     width: 100 + (strengthNum * 30), height: isJumping ? 60 : 40, 
                     offsetX: 50 + (strengthNum * 15), offsetY: isCrouching ? 120 : (isJumping ? 150 : 50), 
-                    rec: rec, active: active, hitStun: hStun, guardStun: gStun, hitType: type 
+                    rec: rec, active: active, hitStun: hStun, guardStun: gStun, hitType: type,
+                    cancelable: (strengthNum < 2), // 弱・中は必殺技キャンセル可能
+                    rapidCancelable: (strengthNum === 0), // 弱は連打キャンセル可能
+                    knockdown: isSweep // 足払いはダウンを奪う
                 };
                 
                 this.stateTimer = startup + active + rec;
@@ -300,13 +341,13 @@
                 let target = this.isCPU ? player1 : player2;
                 let dist = Math.abs((this.x + this.width/2) - (target.x + target.width/2));
                 
-                if (dist < 140 && target.isGrounded && target.state !== 'hitstun' && !target.invincible) {
+                if (dist < 140 && target.isGrounded && target.state !== 'hitstun' && !target.invincible && target.state !== 'knockdown') {
                     this.state = 'attack'; this.stateTimer = 30; this.vx = 0;
                     document.getElementById(this.isCPU ? 'p2-status' : 'p1-status').innerText = '背負い投げ!';
                     
-                    target.state = 'hitstun'; target.stateTimer = 40;
+                    target.state = 'knockdown'; target.stateTimer = 40;
                     target.hp = Math.max(0, target.hp - 12); 
-                    target.x += this.facing * 180; target.vy = -8; 
+                    target.x += this.facing * 180; target.vy = -8; target.vx = 0;
                     
                     document.getElementById(target.isCPU ? 'p2-hp' : 'p1-hp').style.width = target.hp + '%';
                     displayFrameAdvantage(this, target, 10);
@@ -316,8 +357,17 @@
             }
 
             startSpecialAttack(moveName, strength) {
-                if (this.state === 'hitstun' || this.state === 'guardstun') return;
+                if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown') return;
                 
+                // キャンセル処理の判定
+                if (this.state === 'attack') {
+                    if (this.currentAttack && !this.currentAttack.isProjectile) {
+                        let isStartup = this.stateTimer > (this.currentAttack.active + this.currentAttack.rec); 
+                        let canHitCancel = this.hasHitThisAttack && this.currentAttack.cancelable;
+                        if (!isStartup && !canHitCancel) return; // キャンセル条件を満たさない場合は終了
+                    } else { return; }
+                }
+
                 this.state = 'attack'; this.hasHitThisAttack = false; this.vx = 0;
                 const statusId = this.isCPU ? 'p2-status' : 'p1-status';
 
@@ -325,7 +375,7 @@
                     let isSuper = strength === 3; 
                     this.currentAttack = { 
                         name: isSuper ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
-                        isProjectile: true, hitStun: isSuper ? 40 : 22, guardStun: isSuper ? 24 : 12 
+                        isProjectile: true, hitStun: isSuper ? 40 : 22, guardStun: isSuper ? 24 : 12, knockdown: isSuper
                     };
                     this.stateTimer = isSuper ? 45 : 30; 
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
@@ -335,11 +385,12 @@
                 else if (moveName === 'shoryuken') {
                     let isEX = strength === 3;
                     let jumpHeight = isEX ? -22 : -16 - strength * 2;
-                    this.vy = jumpHeight; this.invincible = true; 
+                    this.vy = jumpHeight; this.invincibleTimer = 8; // リバーサル無敵を付与
                     
                     this.currentAttack = { 
                         name: isEX ? 'EX昇龍拳(1G)' : ['弱 昇龍拳','中 昇龍拳','強 昇龍拳'][strength], 
-                        damage: isEX ? 8 : 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: 10 
+                        damage: isEX ? 8 : 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, 
+                        rec: 30, hitStun: 35, guardStun: 10, knockdown: true 
                     };
                     this.stateTimer = 55; this.vx = this.facing * (isEX ? 4 : 2 + strength);
 
@@ -350,10 +401,12 @@
                     let isEX = strength === 3;
                     this.currentAttack = { 
                         name: isEX ? '真空竜巻旋風脚(1G)' : ['弱 竜巻旋風脚','中 竜巻旋風脚','強 竜巻旋風脚'][strength], 
-                        damage: isEX ? 5 : 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 20, hitStun: 26, guardStun: 15 
+                        damage: isEX ? 5 : 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, 
+                        rec: 20, hitStun: 26, guardStun: 15, knockdown: true 
                     };
                     this.stateTimer = isEX ? 60 : 35 + strength * 6;
-                    this.vx = this.facing * (isEX ? 6 : 4 + strength); 
+                    this.vy = -6; // 少し浮く
+                    this.tatsuSpeed = this.facing * (isEX ? 9 : 6 + strength); // 専用の突進速度
                     if (isEX) { this.multihitCount = 4; this.multihitTimer = 10; } 
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 }
@@ -397,24 +450,32 @@
                     this.state = 'guardstun'; this.stateTimer = finalGuardStun;
                     this.x -= this.facing * 8; this.addMeter(0.04);
                     
-                    let attackerRemaining = attacker.stateTimer;
-                    let diff = finalGuardStun - attackerRemaining;
+                    let diff = finalGuardStun - attacker.stateTimer;
                     displayFrameAdvantage(attacker, this, diff);
                     return;
                 }
 
-                document.getElementById(statusId).innerText = 'HIT!';
                 this.hp = Math.max(0, this.hp - attack.damage);
                 document.getElementById(this.isCPU ? 'p2-hp' : 'p1-hp').style.width = this.hp + '%';
                 this.addMeter(0.08); 
 
-                this.comboCount++; this.comboTimer = attack.hitStun + 20;
+                this.comboCount++; this.comboTimer = attack.hitStun + 40;
                 const comboId = this.isCPU ? 'p2-combo' : 'p1-combo';
                 const comboEl = document.getElementById(comboId);
                 if (this.comboCount > 1) { comboEl.innerText = `${this.comboCount} HIT!`; comboEl.style.opacity = 1; }
 
-                this.state = 'hitstun'; this.stateTimer = attack.hitStun; this.multihitCount = 0;
-                this.x -= this.facing * 18;
+                if (attack.knockdown) {
+                    document.getElementById(statusId).innerText = 'KNOCKDOWN!';
+                    this.state = 'knockdown';
+                    this.stateTimer = 45; // ダウン時間
+                    this.vy = -10; // 吹き飛びの高さ
+                    this.vx = -this.facing * 7; // 吹き飛びの距離
+                    this.multihitCount = 0;
+                } else {
+                    document.getElementById(statusId).innerText = 'HIT!';
+                    this.state = 'hitstun'; this.stateTimer = attack.hitStun; this.multihitCount = 0;
+                    this.x -= this.facing * 14;
+                }
 
                 let diff = attack.hitStun - attacker.stateTimer;
                 displayFrameAdvantage(attacker, this, diff);
@@ -466,7 +527,7 @@
 
         let cpuTimer = 0;
         function updateCPU() {
-            if (player2.state === 'hitstun' || player2.state === 'guardstun') return;
+            if (player2.state === 'hitstun' || player2.state === 'guardstun' || player2.state === 'knockdown') return;
             player2.facing = player1.x > player2.x ? 1 : -1;
             const dist = Math.abs(player1.x - player2.x);
             player2.cpuGuardType = null;
@@ -611,11 +672,14 @@
                 updateCPU(); player2.update(5);
             }
 
-            if (player1.state !== 'attack' && player1.state !== 'hitstun' && player1.state !== 'guardstun') {
+            if (player1.state !== 'attack' && player1.state !== 'hitstun' && player1.state !== 'guardstun' && player1.state !== 'knockdown') {
                 player1.facing = player1.x < player2.x ? 1 : -1;
                 if ([7, 8, 9].includes(p1Dir) && player1.isGrounded) player1.vy = -18;
                 if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; else player1.vx = 0;
-            } else { player1.vx = 0; }
+            } else if (player1.state !== 'attack' || !player1.currentAttack || !player1.currentAttack.name.includes('竜巻')) { 
+                // 攻撃中かつ竜巻以外は自力移動不可（慣性はupdate処理で制御）
+                if(player1.state === 'attack' && player1.isGrounded) player1.vx = 0; 
+            }
 
             player1.update(p1Dir);
 
