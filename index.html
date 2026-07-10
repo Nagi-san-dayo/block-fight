@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Super Fighting Fighter - Turbo Edition</title>
+    <title>Super Fighting Fighter - Complete Training Edition</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -10,14 +10,13 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             min-height: 100vh; margin: 0; overflow: hidden; user-select: none;
         }
-        /* フルスクリーンに最適化 */
         .game-wrapper {
             position: relative; width: 1280px; height: 720px;
             box-shadow: 0px 0px 40px rgba(0,0,0,0.8); border: 4px solid #444; background-color: #1a1a1a;
         }
         canvas { width: 100%; height: 100%; display: block; }
         
-        /* 試合中UI */
+        /* UIレイアウト */
         .ui-container {
             position: absolute; top: 20px; left: 5%; width: 90%;
             display: flex; justify-content: space-between; pointer-events: none; z-index: 10;
@@ -26,12 +25,10 @@
         .hp-bar-container { height: 28px; background-color: #442222; border: 3px solid #fff; margin-bottom: 4px; overflow: hidden; }
         .hp-bar { height: 100%; background: linear-gradient(to bottom, #ffcc00, #ff6600); width: 100%; transition: width 0.05s ease-out; }
         
-        /* ガード耐久値（シールド）ゲージ */
         .guard-bar-container { height: 8px; background-color: #333; border: 1px solid #777; margin-bottom: 4px; }
         .guard-bar { height: 100%; background-color: #00bfff; width: 100%; transition: width 0.1s ease-out; }
         .guard-crushed { background-color: #ff33cc !important; }
 
-        /* パワーゲージ */
         .gauge-bar-container { height: 14px; background-color: #222; border: 2px solid #aaa; position: relative; }
         .gauge-bar { height: 100%; background: linear-gradient(to right, #00ffcc, #0099ff); width: 0%; }
         .gauge-text { position: absolute; right: 8px; top: -2px; font-size: 12px; font-weight: bold; color: #fff; text-shadow: 1px 1px #000; }
@@ -40,6 +37,13 @@
         #p1-combo { left: 5%; } #p2-combo { right: 5%; }
         .status-text { font-size: 18px; font-weight: bold; color: #00ffff; height: 22px; text-shadow: 1px 1px #000; }
         .frame-text { font-size: 14px; color: #ffcc00; }
+
+        /* トレーニングモード用設定表示パネル */
+        #training-panel {
+            position: absolute; bottom: 80px; left: 5%; background: rgba(0,0,0,0.7);
+            padding: 10px 20px; border-radius: 5px; border: 1px solid #555; font-family: Arial, sans-serif;
+            font-size: 14px; color: #fff; display: none; z-index: 10; pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -74,24 +78,32 @@
             <div id="p2-combo" class="combo-counter">0 HIT!</div>
         </div>
 
+        <div id="training-panel">
+            <strong style="color: #00ffcc;">TRAINING MODE CONTROL</strong><br>
+            【Tキー】ダミー状態切替: <span id="dummy-state-text" style="color: #ffcc00; font-weight:bold;">STAND</span><br>
+            ※体力・パワーゲージは自動で即座にMAXまで常時自動回復します。
+        </div>
+
         <canvas id="gameCanvas" width="1280" height="720"></canvas>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        
-        // システム定数（画面拡大に合わせて調整）
         const GRAVITY = 0.8;
         const FLOOR_Y = canvas.height - 60;
         
-        // ゲームモード管理 ('TITLE', 'CHAR_SELECT', 'BATTLE', 'GAME_OVER')
+        // ゲームステート ('TITLE', 'MODE_SELECT', 'CHAR_SELECT', 'BATTLE', 'GAME_OVER')
         let gameMode = 'TITLE'; 
-        let selectIndex = 0; // 0: BLUE, 1: RED, 2: GREEN
+        let selectModeIndex = 0; // 0: ARCADE BATTLE, 1: TRAINING MODE
+        let selectIndex = 0; 
         const CHAR_COLORS = ['#3366ff', '#ff3333', '#33cc33'];
         const CHAR_NAMES = ['RYU-BLUE', 'KEN-RED', 'CHUN-GREEN'];
 
-        // 飛び道具クラス
+        // トレーニングモード設定 (0: STAND, 1: CROUCH, 2: GUARD, 3: PARRY)
+        let dummyStateSetting = 0;
+        const DUMMY_STRINGS = ['立ち (IDLE)', 'しゃがみ (CROUCH)', '常時ガード (GUARD)', 'ジャストパリィ (PARRY)'];
+
         class Fireball {
             constructor(x, y, direction, owner, isEX = false, strength = 0) {
                 this.x = x; this.y = y; this.width = isEX ? 90 : 70; this.height = isEX ? 60 : 40;
@@ -113,7 +125,6 @@
                 this.currentAttack = null; this.hasHitThisAttack = false; this.comboCount = 0; this.comboTimer = 0;
                 this.attackBox = { x: 0, y: 0, width: 0, height: 0 }; this.isCrouching = false; this.invincible = false;
                 this.cpuGuardType = null; this.multihitCount = 0; this.multihitTimer = 0;
-                this.advantageFrames = 0; // 有利不利フレーム用内部データ
             }
 
             addMeter(amount) {
@@ -127,14 +138,14 @@
                 if (this.isGuardCrushed) return;
                 this.guardShield = Math.max(0, this.guardShield + amount);
                 if (this.guardShield <= 0) {
-                    this.isGuardCrushed = true; this.guardCrushTimer = 240; // 4秒間弱体化
+                    this.isGuardCrushed = true; this.guardCrushTimer = 240; 
                     document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').classList.add('guard-crushed');
                 }
                 document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').style.width = this.guardShield + '%';
             }
 
             draw() {
-                if (this.isGuardCrushed) ctx.fillStyle = '#ff33cc'; // ガードクラッシュ中
+                if (this.isGuardCrushed) ctx.fillStyle = '#ff33cc'; 
                 else if (this.invincible) ctx.fillStyle = '#ffff66'; 
                 else if (this.state === 'hitstun') ctx.fillStyle = '#ff4444';
                 else if (this.state === 'guardstun') ctx.fillStyle = '#44ff44';
@@ -146,12 +157,10 @@
                 }
                 ctx.fillRect(this.x, this.y, this.width, this.height);
                 
-                // 目線
                 ctx.fillStyle = '#000';
                 let eyeX = this.facing === 1 ? this.x + this.width - 25 : this.x + 15;
                 ctx.fillRect(eyeX, this.y + 25, 15, 15);
 
-                // 攻撃判定表示
                 if (this.state === 'attack' && this.attackBox.width > 0) {
                     ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
                     ctx.fillRect(this.attackBox.x, this.attackBox.y, this.attackBox.width, this.attackBox.height);
@@ -159,7 +168,6 @@
             }
 
             update(currentDirNum) {
-                // ガードクラッシュの回復タイマー
                 if (this.isGuardCrushed) {
                     this.guardCrushTimer--;
                     if (this.guardCrushTimer <= 0) {
@@ -167,18 +175,16 @@
                         document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').classList.remove('guard-crushed');
                     }
                 } else if (this.state === 'idle' && this.guardShield < 100) {
-                    this.guardShield = Math.min(100, this.guardShield + 0.1); // 自然回復
+                    this.guardShield = Math.min(100, this.guardShield + 0.1);
                     document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').style.width = this.guardShield + '%';
                 }
 
-                // しゃがみ処理
                 if (this.state !== 'attack' && this.state !== 'hitstun' && [1, 2, 3].includes(currentDirNum)) {
                     this.isCrouching = true; this.height = this.baseHeight * 0.7;
                 } else if (this.state !== 'attack' && this.state !== 'hitstun') {
                     this.isCrouching = false; this.height = this.baseHeight;
                 }
 
-                // 重力と位置更新
                 this.y += this.vy;
                 if (this.y + this.height >= FLOOR_Y) {
                     this.y = FLOOR_Y - this.height; this.vy = 0; this.isGrounded = true;
@@ -187,7 +193,6 @@
                 this.x += this.vx;
                 if (this.x < 0) this.x = 0; if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
 
-                // 多段ヒット処理
                 if (this.multihitCount > 0) {
                     this.multihitTimer--;
                     if (this.multihitTimer <= 0) {
@@ -199,7 +204,6 @@
                     }
                 }
 
-                // ステートタイマー消費
                 if (this.stateTimer > 0) {
                     this.stateTimer--;
                     if (this.stateTimer === 0) { 
@@ -208,7 +212,6 @@
                     }
                 }
 
-                // 近接攻撃ボックスの同期
                 if (this.state === 'attack' && this.currentAttack && !this.currentAttack.isProjectile) {
                     const data = this.currentAttack;
                     this.attackBox.width = data.width; this.attackBox.height = data.height;
@@ -225,7 +228,6 @@
                 }
             }
 
-            // 通常技の発動（有利不利のパラメータを厳密化）
             startNormalAttack(btnType, dirNum) {
                 if (this.state !== 'idle') return;
                 let isLow = [1,2,3].includes(dirNum) && btnType.includes('k');
@@ -235,7 +237,6 @@
                 let name = isLow ? '屈キック' : (isOverhead ? '特殊中段' : '通常技');
 
                 this.state = 'attack'; this.hasHitThisAttack = false;
-                // active: 攻撃判定持続, rec: 攻撃全体の長さ
                 this.currentAttack = { 
                     name: name, damage: 6, width: 130, height: 40, offsetX: 70, offsetY: isLow ? 120 : 50, 
                     rec: 10, active: 6, hitStun: 22, guardStun: 14, hitType: type 
@@ -244,25 +245,20 @@
                 document.getElementById(this.isCPU ? 'p2-status' : 'p1-status').innerText = name;
             }
 
-            // ★ 投げ技の発動（密着コマンド入力用）
             tryThrow() {
                 if (this.state !== 'idle' || !this.isGrounded) return false;
                 let target = this.isCPU ? player1 : player2;
                 let dist = Math.abs((this.x + this.width/2) - (target.x + target.width/2));
                 
                 if (dist < 140 && target.isGrounded && target.state !== 'hitstun' && !target.invincible) {
-                    // 投げ成功
                     this.state = 'attack'; this.stateTimer = 30; this.vx = 0;
                     document.getElementById(this.isCPU ? 'p2-status' : 'p1-status').innerText = '背負い投げ!';
                     
                     target.state = 'hitstun'; target.stateTimer = 40;
-                    target.hp = Math.max(0, target.hp - 12); // 投げダメージ
-                    target.x += this.facing * 180; // 相手を吹き飛ばす
-                    target.vy = -8; // 少し浮かす
+                    target.hp = Math.max(0, target.hp - 12); 
+                    target.x += this.facing * 180; target.vy = -8; 
                     
                     document.getElementById(target.isCPU ? 'p2-hp' : 'p1-hp').style.width = target.hp + '%';
-                    
-                    // 有利フレームの表示（投げ側が+10フレーム先に動ける）
                     displayFrameAdvantage(this, target, 10);
                     return true;
                 }
@@ -327,39 +323,33 @@
                 const statusId = this.isCPU ? 'p2-status' : 'p1-status';
                 let attacker = this.isCPU ? player1 : player2;
 
-                // ジャストパリィ
                 if (isParried) {
                     document.getElementById(statusId).innerText = 'JUST PARRIED!';
                     this.x -= this.facing * 5; this.addMeter(0.15);
-                    displayFrameAdvantage(attacker, this, -15); // パリィ側が15F大幅有利
+                    displayFrameAdvantage(attacker, this, -15); 
                     return;
                 }
 
-                // ガード処理
                 if (isGuarded) {
                     let finalGuardStun = attack.guardStun;
-                    
                     if (this.isGuardCrushed) {
-                        // ガードクラッシュ中の弱体化効果：削りダメージ＆硬直1.5倍
                         document.getElementById(statusId).innerText = 'CRUSH GUARD!';
-                        this.hp = Math.max(0, this.hp - Math.floor(attack.damage * 0.4)); // 削り
+                        this.hp = Math.max(0, this.hp - Math.floor(attack.damage * 0.4)); 
                         finalGuardStun = Math.floor(attack.guardStun * 1.5);
                     } else {
                         document.getElementById(statusId).innerText = 'GUARD!';
-                        this.updateGuardShield(-15); // ガード耐久値を減らす
+                        this.updateGuardShield(-15); 
                     }
 
                     this.state = 'guardstun'; this.stateTimer = finalGuardStun;
                     this.x -= this.facing * 8; this.addMeter(0.04);
                     
-                    // ガード時の有利不利計算 (攻撃側の残り全体動作F - ガード側の硬直F)
                     let attackerRemaining = attacker.stateTimer;
                     let diff = finalGuardStun - attackerRemaining;
                     displayFrameAdvantage(attacker, this, diff);
                     return;
                 }
 
-                // 通常ヒット処理
                 document.getElementById(statusId).innerText = 'HIT!';
                 this.hp = Math.max(0, this.hp - attack.damage);
                 document.getElementById(this.isCPU ? 'p2-hp' : 'p1-hp').style.width = this.hp + '%';
@@ -373,22 +363,21 @@
                 this.state = 'hitstun'; this.stateTimer = attack.hitStun; this.multihitCount = 0;
                 this.x -= this.facing * 18;
 
-                // ヒット時の有利不利計算
                 let diff = attack.hitStun - attacker.stateTimer;
                 displayFrameAdvantage(attacker, this, diff);
             }
         }
 
-        // 有利・不利フレームを画面UIに分かりやすくリアルタイム表示する関数
         function displayFrameAdvantage(attacker, defender, diff) {
             const p1El = document.getElementById('p1-frame');
             const p2El = document.getElementById('p2-frame');
-            
+            if (selectModeIndex === 1) {
+                // トレーニングモード中はコンソールやUIをリセットせず残しやすくする
+            }
             if (diff === 0) {
                 p1El.innerText = '±0F (五分)'; p2El.innerText = '±0F (五分)';
                 p1El.style.color = p2El.style.color = '#fff';
             } else if (diff > 0) {
-                // 攻撃側有利
                 if (!attacker.isCPU) {
                     p1El.innerText = `+${diff}F 有利`; p1El.style.color = '#00ff00';
                     p2El.innerText = `-${diff}F 不利`; p2El.style.color = '#ff3333';
@@ -397,7 +386,6 @@
                     p1El.innerText = `-${diff}F 不利`; p1El.style.color = '#ff3333';
                 }
             } else {
-                // 攻撃側不利
                 if (!attacker.isCPU) {
                     p1El.innerText = `${diff}F 不利`; p1El.style.color = '#ff3333';
                     p2El.innerText = `+${Math.abs(diff)}F 有利`; p2El.style.color = '#00ff00';
@@ -408,13 +396,9 @@
             }
         }
 
-        let player1;
-        let player2;
-        let projectiles = [];
-        let matchTimer = 99;
-        let matchTimerInterval;
+        let player1; let player2; let projectiles = [];
+        let matchTimer = 99; let matchTimerInterval;
 
-        // 入力管理システム
         let activeMoveKey = null; const moveKeyStack = [];
         function getJoystickDirection() {
             switch (activeMoveKey) {
@@ -430,7 +414,7 @@
                     rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y);
         }
 
-        // CPUのAI行動ロジック
+        // CPU・ダミーの行動制御ロジック
         let cpuTimer = 0;
         function updateCPU() {
             if (player2.state === 'hitstun' || player2.state === 'guardstun') return;
@@ -438,62 +422,80 @@
             const dist = Math.abs(player1.x - player2.x);
             player2.cpuGuardType = null;
 
-            if (player2.state === 'idle') {
-                if (player1.state === 'attack' && dist < 260) {
-                    player2.cpuGuardType = Math.random() < 0.12 ? 'x' : (Math.random() < 0.5 ? 'z' : 'a');
-                    player2.vx = 0; return;
-                }
-                if (dist > 180) player2.vx = player2.facing * 3.5;
-                else if (dist < 90) {
-                    // 密着時は確率で投げを狙う
-                    if (Math.random() < 0.15) { if (player2.tryThrow()) return; }
-                    player2.vx = -player2.facing * 2.5;
-                }
-                else player2.vx = 0;
+            // 通常のバトルモードのAI
+            if (selectModeIndex === 0) {
+                if (player2.state === 'idle') {
+                    if (player1.state === 'attack' && dist < 260) {
+                        player2.cpuGuardType = Math.random() < 0.12 ? 'x' : (Math.random() < 0.5 ? 'z' : 'a');
+                        player2.vx = 0; return;
+                    }
+                    if (dist > 180) player2.vx = player2.facing * 3.5;
+                    else if (dist < 90) {
+                        if (Math.random() < 0.15) { if (player2.tryThrow()) return; }
+                        player2.vx = -player2.facing * 2.5;
+                    }
+                    else player2.vx = 0;
 
-                cpuTimer--;
-                if (cpuTimer <= 0) {
-                    cpuTimer = 40 + Math.random() * 40;
-                    if (dist < 160) {
-                        if (player2.meter >= 2.0 && Math.random() < 0.4) { player2.meter -= 2.0; player2.startSpecialAttack('shoryuken', 3); 
-                        } else { player2.startSpecialAttack('shoryuken', Math.floor(Math.random()*3)); }
-                    } else {
-                        if (player2.meter >= 1.0 && Math.random() < 0.3) { player2.meter -= 1.0; player2.startSpecialAttack('hadouken', 3);
-                        } else { player2.startSpecialAttack('hadouken', Math.floor(Math.random()*3)); }
+                    cpuTimer--;
+                    if (cpuTimer <= 0) {
+                        cpuTimer = 40 + Math.random() * 40;
+                        if (dist < 160) {
+                            if (player2.meter >= 2.0 && Math.random() < 0.4) { player2.meter -= 2.0; player2.startSpecialAttack('shoryuken', 3); 
+                            } else { player2.startSpecialAttack('shoryuken', Math.floor(Math.random()*3)); }
+                        } else {
+                            if (player2.meter >= 1.0 && Math.random() < 0.3) { player2.meter -= 1.0; player2.startSpecialAttack('hadouken', 3);
+                            } else { player2.startSpecialAttack('hadouken', Math.floor(Math.random()*3)); }
+                        }
+                    }
+                }
+            } 
+            // トレーニングモード中のダミー設定反映
+            else {
+                player2.vx = 0; // 動かない
+                if (player1.state === 'attack' && dist < 350) {
+                    if (dummyStateSetting === 2) {
+                        // 常時ガード (相手の攻撃属性に合わせて最適ガード)
+                        player2.cpuGuardType = (player1.currentAttack && player1.currentAttack.hitType === 'low') ? 'z' : 'a';
+                    } else if (dummyStateSetting === 3) {
+                        player2.cpuGuardType = 'x'; // ジャストパリィ
                     }
                 }
             }
         }
 
-        // 試合の初期化
         function startBattle() {
             gameMode = 'BATTLE';
             document.getElementById('game-ui').style.display = 'flex';
             
+            if (selectModeIndex === 1) {
+                document.getElementById('training-panel').style.display = 'block';
+                document.getElementById('timer').innerText = '∞';
+            } else {
+                document.getElementById('training-panel').style.display = 'none';
+                matchTimer = 99; document.getElementById('timer').innerText = matchTimer;
+            }
+            
             player1 = new Fighter({ x: 250, y: 0, color: CHAR_COLORS[selectIndex], isCPU: false, name: CHAR_NAMES[selectIndex] });
-            // CPUは選んでいないキャラから選出
             let cpuColorIndex = (selectIndex + 1) % CHAR_COLORS.length;
             player2 = new Fighter({ x: 900, y: 0, color: CHAR_COLORS[cpuColorIndex], isCPU: true, name: CHAR_NAMES[cpuColorIndex] });
             
             document.getElementById('p1-name').innerText = player1.name;
-            document.getElementById('p2-name').innerText = player2.name + ' (CPU)';
+            document.getElementById('p2-name').innerText = player2.name + (selectModeIndex === 1 ? ' (DUMMY)' : ' (CPU)');
             
-            matchTimer = 99;
             clearInterval(matchTimerInterval);
-            matchTimerInterval = setInterval(() => {
-                if (gameMode === 'BATTLE') {
-                    matchTimer--; document.getElementById('timer').innerText = matchTimer;
-                    if (matchTimer <= 0) { gameMode = 'GAME_OVER'; clearInterval(matchTimerInterval); }
-                }
-            }, 1000);
+            if (selectModeIndex === 0) {
+                matchTimerInterval = setInterval(() => {
+                    if (gameMode === 'BATTLE') {
+                        matchTimer--; document.getElementById('timer').innerText = matchTimer;
+                        if (matchTimer <= 0) { gameMode = 'GAME_OVER'; clearInterval(matchTimerInterval); }
+                    }
+                }, 1000);
+            }
         }
 
-        // メインループ
         function animate() {
             window.requestAnimationFrame(animate);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // 背景描画
             ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#444'; ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
 
@@ -505,26 +507,37 @@
                 return;
             }
 
+            if (gameMode === 'MODE_SELECT') {
+                ctx.fillStyle = '#ffffff'; ctx.font = '48px Impact'; ctx.textAlign = 'center';
+                ctx.fillText('SELECT GAME MODE', canvas.width / 2, 180);
+
+                // モード項目
+                const modes = ['1. ARCADE BATTLE', '2. TRAINING MODE'];
+                for(let i=0; i<2; i++) {
+                    ctx.fillStyle = (selectModeIndex === i) ? '#00ffff' : '#666';
+                    ctx.font = (selectModeIndex === i) ? '36px Arial Black' : '30px Arial';
+                    ctx.fillText((selectModeIndex === i ? '➔ ' : '') + modes[i], canvas.width / 2, 320 + i * 80);
+                }
+                ctx.fillStyle = '#ffcc00'; ctx.font = '20px Arial';
+                ctx.fillText('W / X: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 540);
+                return;
+            }
+
             if (gameMode === 'CHAR_SELECT') {
                 ctx.fillStyle = '#ffffff'; ctx.font = '42px Impact'; ctx.textAlign = 'center';
                 ctx.fillText('SELECT YOUR CHARACTER', canvas.width / 2, 120);
 
-                // 3つの選択枠を描画
                 for (let i = 0; i < 3; i++) {
-                    let boxX = 280 + i * 260;
-                    let boxY = 280;
+                    let boxX = 280 + i * 260; let boxY = 280;
                     ctx.strokeStyle = (selectIndex === i) ? '#ffcc00' : '#555';
                     ctx.lineWidth = (selectIndex === i) ? 6 : 2;
                     ctx.strokeRect(boxX, boxY, 200, 200);
-                    
-                    ctx.fillStyle = CHAR_COLORS[i];
-                    ctx.fillRect(boxX + 10, boxY + 10, 180, 180);
-                    
+                    ctx.fillStyle = CHAR_COLORS[i]; ctx.fillRect(boxX + 10, boxY + 10, 180, 180);
                     ctx.fillStyle = '#fff'; ctx.font = '20px Arial';
                     ctx.fillText(CHAR_NAMES[i], boxX + 100, boxY + 230);
                 }
                 ctx.fillStyle = '#ffcc00'; ctx.font = '22px Arial';
-                ctx.fillText('A or D: MOVE  /  SPACE: SELECT', canvas.width / 2, 600);
+                ctx.fillText('A or D: MOVE  /  SPACE: CONFIRM', canvas.width / 2, 600);
                 return;
             }
 
@@ -539,17 +552,32 @@
                 ctx.fillText('PRESS SPACE TO RETURN TO TITLE', canvas.width / 2, 440);
             }
 
-            // --- バトルロジックアップデート ---
-            const p1Dir = getJoystickDirection();
+            // --- トレーニングモード用リアルタイム自動回復ループ ---
+            if (selectModeIndex === 1 && gameMode === 'BATTLE') {
+                if (player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
+                if (player2.hp < 100) { player2.hp = 100; document.getElementById('p2-hp').style.width = '100%'; }
+                if (player1.meter < 3.0) { player1.addMeter(0.1); }
+                if (player2.meter < 3.0) { player2.addMeter(0.1); }
+            }
+
+            // バトル挙動処理
+            let p1Dir = getJoystickDirection();
+            if (gameMode === 'BATTLE' && selectModeIndex === 1 && dummyStateSetting === 1) {
+                // ダミー常時しゃがみ状態設定の方向インジェクション
+                updateCPU(); player2.update(2); 
+            } else {
+                updateCPU(); player2.update(5);
+            }
+
             if (player1.state !== 'attack' && player1.state !== 'hitstun' && player1.state !== 'guardstun') {
                 player1.facing = player1.x < player2.x ? 1 : -1;
                 if ([7, 8, 9].includes(p1Dir) && player1.isGrounded) player1.vy = -18;
                 if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; else player1.vx = 0;
-            } else if (player1.state !== 'attack') { player1.vx = 0; }
+            } else { player1.vx = 0; }
 
-            player1.update(p1Dir); updateCPU(); player2.update(5);
+            player1.update(p1Dir);
 
-            // 飛び道具の衝突
+            // 衝突判定
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 let p = projectiles[i]; p.update(); p.draw();
                 let target = p.owner === player1 ? player2 : player1;
@@ -560,7 +588,6 @@
                 if (!p.isActive) projectiles.splice(i, 1);
             }
 
-            // 近接通常技・必殺技の衝突
             if (player1.state === 'attack' && player1.currentAttack && !player1.hasHitThisAttack && !player1.currentAttack.isProjectile && player1.multihitCount === 0) {
                 if (player1.stateTimer > player1.currentAttack.rec) {
                     if (checkCollision(player1.attackBox, player2)) {
@@ -579,14 +606,12 @@
 
             player1.draw(); player2.draw();
 
-            if (player1.hp <= 0 || player2.hp <= 0) { gameMode = 'GAME_OVER'; clearInterval(matchTimerInterval); }
+            if (selectModeIndex === 0 && (player1.hp <= 0 || player2.hp <= 0)) { gameMode = 'GAME_OVER'; clearInterval(matchTimerInterval); }
         }
 
         function checkCommand(pattern) {
-            const now = Date.now();
-            inputBuffer = inputBuffer.filter(i => now - i.time < 400); 
-            const historyStr = inputBuffer.map(i => i.dir).join('');
-            let targetPattern = pattern;
+            const now = Date.now(); inputBuffer = inputBuffer.filter(i => now - i.time < 400); 
+            const historyStr = inputBuffer.map(i => i.dir).join(''); let targetPattern = pattern;
             if (player1.facing === -1) {
                 targetPattern = pattern.replace(/3/g, 'tmp').replace(/1/g, '3').replace(/tmp/g, '1')
                                        .replace(/6/g, 'tmp').replace(/4/g, '6').replace(/tmp/g, '4');
@@ -597,8 +622,12 @@
         window.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
 
-            // モードごとのメニュー操作
             if (gameMode === 'TITLE') {
+                if (key === ' ') { gameMode = 'MODE_SELECT'; } return;
+            }
+            if (gameMode === 'MODE_SELECT') {
+                if (key === 'w') { selectModeIndex = 0; }
+                if (key === 'x') { selectModeIndex = 1; }
                 if (key === ' ') { gameMode = 'CHAR_SELECT'; } return;
             }
             if (gameMode === 'CHAR_SELECT') {
@@ -607,10 +636,16 @@
                 if (key === ' ') { startBattle(); } return;
             }
             if (gameMode === 'GAME_OVER') {
-                if (key === ' ') { gameMode = 'TITLE'; document.getElementById('game-ui').style.display = 'none'; } return;
+                if (key === ' ') { gameMode = 'TITLE'; document.getElementById('game-ui').style.display = 'none'; document.getElementById('training-panel').style.display = 'none'; } return;
             }
 
-            // 試合中の操作キーバインド
+            // トレーニングモード中のダミー状態切替ショートカット (Tキー)
+            if (gameMode === 'BATTLE' && selectModeIndex === 1 && key === 't') {
+                dummyStateSetting = (dummyStateSetting + 1) % 4;
+                document.getElementById('dummy-state-text').innerText = DUMMY_STRINGS[dummyStateSetting];
+                return;
+            }
+
             if (['q','w','e','a','d','z','x','c'].includes(key)) {
                 if (!moveKeyStack.includes(key)) moveKeyStack.push(key); activeMoveKey = key;
                 const currentDir = getJoystickDirection();
@@ -624,7 +659,6 @@
                 let strength = ['j','u'].includes(key) ? 0 : (['k','i'].includes(key) ? 1 : 2);
                 if (key === ' ') strength = 3; 
 
-                // 強ボタン(LまたはO) ＋ 相手の方向キー(4 or 6)で投げ技を最優先検証
                 if ((key === 'l' || key === 'o') && (currentDir === 4 || currentDir === 6)) {
                     if (player1.tryThrow()) { inputBuffer = []; return; }
                 }
