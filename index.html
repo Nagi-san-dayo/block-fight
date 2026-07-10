@@ -145,6 +145,10 @@
                 this.invincible = false; this.invincibleTimer = 0;
                 this.cpuGuardType = null; this.multihitCount = 0; this.multihitTimer = 0;
                 this.tatsuSpeed = 0;
+                
+                // 新設パラメータ
+                this.bufferedInput = null; // 先行入力バッファ
+                this.shoryuCancelWindow = 0; // EX昇龍キャンセル用の猶予タイマー
             }
 
             addMeter(amount) {
@@ -162,6 +166,19 @@
                     document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').classList.add('guard-crushed');
                 }
                 document.getElementById(this.isCPU ? 'p2-guard' : 'p1-guard').style.width = this.guardShield + '%';
+            }
+
+            // 攻撃判定の位置を最新のキャラクター座標に同期させるメソッド
+            updateAttackBox() {
+                if (this.state === 'attack' && this.currentAttack && !this.currentAttack.isProjectile) {
+                    const data = this.currentAttack;
+                    this.attackBox.width = data.width; 
+                    this.attackBox.height = data.height;
+                    this.attackBox.y = this.y + data.offsetY;
+                    this.attackBox.x = this.facing === 1 ? this.x + data.offsetX : this.x - data.width + (this.width - data.offsetX);
+                } else {
+                    this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
+                }
             }
 
             draw() {
@@ -205,6 +222,9 @@
                 } else if (this.state === 'idle' && !this.currentAttack) {
                     this.invincible = false;
                 }
+
+                // 各種タイマーの更新
+                if (this.shoryuCancelWindow > 0) this.shoryuCancelWindow--;
 
                 if (this.isGuardCrushed) {
                     this.guardCrushTimer--;
@@ -250,6 +270,9 @@
                 this.x += this.vx;
                 if (this.x < 0) this.x = 0; if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
 
+                // 位置変更後に即座に攻撃判定を同期（これで移動時のズレが完全に無くなります）
+                this.updateAttackBox();
+
                 if (this.multihitCount > 0) {
                     this.multihitTimer--;
                     if (this.multihitTimer <= 0) {
@@ -272,6 +295,25 @@
                             this.state = 'idle'; this.currentAttack = null; this.multihitCount = 0;
                             this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
                         }
+
+                        // 行動可能（idle）になった瞬間に先行入力をチェックして消化
+                        if (this.state === 'idle' && this.bufferedInput && (Date.now() - this.bufferedInput.time < 150)) {
+                            let b = this.bufferedInput;
+                            this.bufferedInput = null; // 無限ループ防止のため即クリア
+                            if (b.type === 'special') {
+                                if (b.strength === 3) {
+                                    if (this.meter >= 1.0) {
+                                        this.meter -= 1.0;
+                                        let successEX = this.startSpecialAttack(b.moveName, 3);
+                                        if (!successEX) this.meter += 1.0; // 発動失敗時はゲージを払い戻し
+                                    }
+                                } else {
+                                    this.startSpecialAttack(b.moveName, b.strength);
+                                }
+                            } else if (b.type === 'normal') {
+                                this.startNormalAttack(b.key, b.dir);
+                            }
+                        }
                     }
                 }
 
@@ -283,17 +325,10 @@
                         document.getElementById(this.isCPU ? 'p2-combo' : 'p1-combo').style.opacity = 0;
                     }
                 }
-
-                if (this.state === 'attack' && this.currentAttack && !this.currentAttack.isProjectile) {
-                    const data = this.currentAttack;
-                    this.attackBox.width = data.width; this.attackBox.height = data.height;
-                    this.attackBox.y = this.y + data.offsetY;
-                    this.attackBox.x = this.facing === 1 ? this.x + data.offsetX : this.x - data.width + (this.width - data.offsetX);
-                }
             }
 
             startNormalAttack(btnType, dirNum) {
-                if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return;
+                if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return false;
 
                 let isPunch = ['j', 'k', 'l'].includes(btnType);
                 let isKick = ['u', 'i', 'o'].includes(btnType);
@@ -306,11 +341,11 @@
                 let isJumping = !this.isGrounded;
                 
                 let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
-                let isStartup = (this.state === 'attack' && this.currentAttack && this.stateTimer > (this.currentAttack.active + this.currentAttack.rec));
                 let isAirborne = (!this.isGrounded && this.state !== 'idle');
                 
-                if (this.state !== 'idle' && this.isGrounded && !isRapid && !isStartup) return;
-                if (isAirborne) return;
+                // 連打キャンセル(isRapid)以外での、通常技動作中の上書き（isStartupによる連打化）を完全禁止に修正
+                if (this.state !== 'idle' && !isRapid) return false;
+                if (isAirborne) return false;
 
                 let stanceName = isJumping ? 'ジャンプ' : (isCrouching ? 'しゃがみ' : '立ち');
                 let name = `${stanceName}${strengthName}${typeName}`;
@@ -343,7 +378,9 @@
                 };
                 
                 this.stateTimer = startup + active + rec;
+                this.updateAttackBox();
                 document.getElementById(this.isCPU ? 'p2-status' : 'p1-status').innerText = name;
+                return true;
             }
 
             tryThrow() {
@@ -376,20 +413,22 @@
             }
 
             startSpecialAttack(moveName, strength) {
-                if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return;
+                if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return false;
                 
-                if (this.state === 'attack') {
+                // 昇龍キャンセルEX昇龍の判定条件を拡張 (ヒットストップ中、または設定した猶予タイマー内であれば受け付ける)
+                let isShoryuToEXCancel = this.currentAttack && this.currentAttack.name.includes('昇龍拳') && !this.currentAttack.name.includes('EX') && strength === 3 && (this.hitstopTimer > 0 || this.shoryuCancelWindow > 0);
+
+                if (this.state === 'attack' && !isShoryuToEXCancel) {
                     if (this.currentAttack && !this.currentAttack.isProjectile) {
                         let isStartup = this.stateTimer > (this.currentAttack.active + this.currentAttack.rec); 
                         let canHitCancel = this.hasHitThisAttack && this.currentAttack.cancelable;
                         
-                        let isShoryuToEXCancel = this.currentAttack.name.includes('昇龍拳') && !this.currentAttack.name.includes('EX') && this.hitstopTimer > 0 && strength === 3;
-
-                        if (!isStartup && !canHitCancel && !isShoryuToEXCancel) return; 
-                    } else { return; }
+                        if (!isStartup && !canHitCancel) return false; 
+                    } else { return false; }
                 }
 
                 this.hitstopTimer = 0;
+                this.shoryuCancelWindow = 0; // 使用したためリセット
                 this.state = 'attack'; this.hasHitThisAttack = false; this.vx = 0;
                 const statusId = this.isCPU ? 'p2-status' : 'p1-status';
 
@@ -433,6 +472,8 @@
                     if (isEX) { this.multihitCount = 4; this.multihitTimer = 10; } 
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 }
+                this.updateAttackBox();
+                return true;
             }
 
             evaluateHit(attack, hitType) {
@@ -460,6 +501,11 @@
 
                 this.hitstopTimer = stopFrames;
                 attacker.hitstopTimer = stopFrames;
+
+                // 通常の昇龍拳がヒット・ガードされた際、EX昇龍拳へのキャンセル猶予タイマー(30フレーム)をセット
+                if (attack.name && attack.name.includes('昇龍拳') && !attack.name.includes('EX')) {
+                    attacker.shoryuCancelWindow = 30;
+                }
 
                 if (isParried) {
                     document.getElementById(statusId).innerText = 'JUST PARRIED!';
@@ -770,7 +816,7 @@
                 if (player2.stateTimer > player2.currentAttack.rec) {
                     if (player1.state !== 'knockdown' && player1.state !== 'guardstun') {
                         if (checkCollision(player2.attackBox, player1)) {
-                            player1.evaluateHit(player2.currentAttack, 'high'); player2.hasHitThisAttack = true;
+                            player1.evaluateHit(player2.attackBox, 'high'); player2.hasHitThisAttack = true;
                         }
                     }
                 }
@@ -839,28 +885,67 @@
                     if (player1.tryThrow()) { inputBuffer = []; return; }
                 }
 
+                let success = false;
+                let isSpecial = false;
+
+                // 必殺技コマンド受付
                 if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key) || isSpace)) {
+                    isSpecial = true;
                     if (strength === 3) {
-                        if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('hadouken', 3); }
-                    } else { player1.startSpecialAttack('hadouken', strength); }
-                    inputBuffer = []; return;
+                        if (player1.meter >= 1.0) { 
+                            player1.meter -= 1.0; 
+                            success = player1.startSpecialAttack('hadouken', 3); 
+                            if (!success) player1.meter += 1.0; // 発動失敗時はゲージを一度戻す（バッファに回すため）
+                        }
+                    } else { success = player1.startSpecialAttack('hadouken', strength); }
+                    
+                    // 発動に失敗（硬直中）した場合は先行入力に保存
+                    if (!success && (strength !== 3 || player1.meter >= 1.0)) {
+                        player1.bufferedInput = { type: 'special', moveName: 'hadouken', strength: strength, time: Date.now() };
+                    }
+                    inputBuffer = []; 
                 }
-                
-                if (checkCommand('623') && (['j','k','l',' '].includes(key) || isSpace)) {
+                else if (checkCommand('623') && (['j','k','l',' '].includes(key) || isSpace)) {
+                    isSpecial = true;
                     if (strength === 3) {
-                        if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('shoryuken', 3); }
-                    } else { player1.startSpecialAttack('shoryuken', strength); }
-                    inputBuffer = []; return;
+                        if (player1.meter >= 1.0) { 
+                            player1.meter -= 1.0; 
+                            success = player1.startSpecialAttack('shoryuken', 3); 
+                            if (!success) player1.meter += 1.0;
+                        }
+                    } else { success = player1.startSpecialAttack('shoryuken', strength); }
+                    
+                    if (!success && (strength !== 3 || player1.meter >= 1.0)) {
+                        player1.bufferedInput = { type: 'special', moveName: 'shoryuken', strength: strength, time: Date.now() };
+                    }
+                    inputBuffer = []; 
                 }
-                
-                if ((checkCommand('214') || checkCommand('24')) && (['u','i','o',' '].includes(key) || isSpace)) {
+                else if ((checkCommand('214') || checkCommand('24')) && (['u','i','o',' '].includes(key) || isSpace)) {
+                    isSpecial = true;
                     if (strength === 3) {
-                        if (player1.meter >= 1.0) { player1.meter -= 1.0; player1.startSpecialAttack('tatsumaki', 3); }
-                    } else { player1.startSpecialAttack('tatsumaki', strength); }
-                    inputBuffer = []; return;
+                        if (player1.meter >= 1.0) { 
+                            player1.meter -= 1.0; 
+                            success = player1.startSpecialAttack('tatsumaki', 3); 
+                            if (!success) player1.meter += 1.0;
+                        }
+                    } else { success = player1.startSpecialAttack('tatsumaki', strength); }
+                    
+                    if (!success && (strength !== 3 || player1.meter >= 1.0)) {
+                        player1.bufferedInput = { type: 'special', moveName: 'tatsumaki', strength: strength, time: Date.now() };
+                    }
+                    inputBuffer = []; 
                 }
 
-                if (!isSpace) player1.startNormalAttack(key, currentDir);
+                // 通常技の受付
+                if (!isSpecial && !isSpace) {
+                    success = player1.startNormalAttack(key, currentDir);
+                    if (!success) {
+                        player1.bufferedInput = { type: 'normal', key: key, dir: currentDir, time: Date.now() };
+                    }
+                }
+
+                // マニュアルでの即時発動に成功した場合は先行入力をクリア
+                if (success) player1.bufferedInput = null;
             }
         });
 
