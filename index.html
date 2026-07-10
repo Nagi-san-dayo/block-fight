@@ -158,8 +158,8 @@
                 this.speed = (isEX ? 14 : 7 + strength * 2.5) * direction; 
                 this.owner = owner; 
                 this.name = isEX ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength];
-                this.damage = isEX ? 6 : 8; 
-                this.hitStun = isEX ? 30 : 15; // 波動拳からのコンボを防ぐため微減
+                this.damage = isEX ? 18 : 8; 
+                this.hitStun = isEX ? 30 : 15; 
                 this.guardStun = isEX ? 18 : 10; 
                 this.hitType = 'high'; 
                 this.isActive = true; 
@@ -197,7 +197,7 @@
                 
                 this.bufferedInput = null; 
                 this.shoryuCancelWindow = 0; 
-                this.weakChainCount = 0; // チェーンリミット用
+                this.weakChainCount = 0; 
             }
 
             addMeter(amount) {
@@ -298,9 +298,10 @@
                     this.y += (prevHeight - this.height);
                 }
 
+                /* 【バグ修正1】竜巻旋風脚のモーションが終了する（タイマーが0になる）までは高度を維持する */
                 if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
                     this.vx = this.tatsuSpeed;
-                    if (this.vy > 0 && !this.isGrounded) this.vy = 0; 
+                    if (this.stateTimer > 0 && this.vy > 0 && !this.isGrounded) this.vy = 0; 
                 }
 
                 this.y += this.vy;
@@ -422,13 +423,14 @@
 
                 this.state = 'attack'; this.hasHitThisAttack = false;
                 
+                /* 【バグ修正2】通常技全体の有利フレーム過多を抑えるため、ヒット・ガード硬直（hStun / gStun）を減少調整 */
                 let dmg, startup, active, rec, hStun, gStun;
                 if (strengthNum === 0) {
-                    dmg = 10; startup = 4; active = 3; rec = 8; hStun = 12; gStun = 6;
+                    dmg = 3; startup = 4; active = 3; rec = 8; hStun = 11; gStun = 8;
                 } else if (strengthNum === 1) {
-                    dmg = 20; startup = 7; active = 4; rec = 14; hStun = 16; gStun = 10;
+                    dmg = 5; startup = 7; active = 4; rec = 8; hStun = 15; gStun = 7;
                 } else {
-                    dmg = 30; startup = 11; active = 5; rec = 20; hStun = 24; gStun = 12;
+                    dmg = 10; startup = 11; active = 5; rec = 9; hStun = 21; gStun = 6;
                 }
                 
                 this.currentAttack = { 
@@ -532,7 +534,7 @@
                         name: ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
                         isProjectile: true, damage: 8, hitStun: 15, guardStun: 10, knockdown: false, launch: false
                     };
-                    this.stateTimer = 42; // 硬直増加でループ防止
+                    this.stateTimer = 42; 
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
                     projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this, false, strength));
                     document.getElementById(statusId).innerText = this.currentAttack.name;
@@ -863,13 +865,15 @@
                 ctx.fillRect(0, bandY, canvas.width, 4);
                 ctx.fillRect(0, bandY + 160, canvas.width, 4);
                 ctx.fillStyle = '#ffffff';
-                ctx.font = 'italic bold 70px Impact';
+                
+                /* 【バグ修正3】日本語フォントを確実に読み込ませるため 'Arial Black', sans-serif を指定 */
+                ctx.font = 'italic bold 64px "Arial Black", sans-serif';
                 ctx.textAlign = 'center';
                 let textX = canvas.width / 2;
                 if (cutInTimer > CUTIN_DURATION - 10) {
                     textX = (canvas.width / 2) + (cutInTimer - (CUTIN_DURATION - 10)) * 60 * cutInAttacker.facing;
                 }
-                ctx.fillText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 25);
+                ctx.fillText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 22);
                 if (cutInTimer === 0) { executeSpecialAfterCutIn(cutInAttacker); }
                 return; 
             }
@@ -993,7 +997,7 @@
                 let target = p.owner === player1 ? player2 : player1;
                 if (checkCollision(p, target) && p.isActive) {
                     let canHit = true;
-                    if(target.state === 'air_hit') canHit = false; // 空中への飛び道具追撃を制限
+                    if(target.state === 'air_hit') canHit = false; 
                     if(canHit) {
                         target.evaluateHit(p, p.hitType); p.hits--; if (p.hits <= 0) p.isActive = false;
                         if (p.owner) p.owner.addMeter(0.06);
