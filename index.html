@@ -426,11 +426,11 @@
                 /* 【バグ修正2】通常技全体の有利フレーム過多を抑えるため、ヒット・ガード硬直（hStun / gStun）を減少調整 */
                 let dmg, startup, active, rec, hStun, gStun;
                 if (strengthNum === 0) {
-                    dmg = 3; startup = 4; active = 3; rec = 8; hStun = 11; gStun = 8;
+                    dmg = 3; startup = 4; active = 3; rec = 8; hStun = 4; gStun = 8;
                 } else if (strengthNum === 1) {
-                    dmg = 5; startup = 7; active = 4; rec = 8; hStun = 15; gStun = 7;
+                    dmg = 5; startup = 7; active = 4; rec = 8; hStun = 6; gStun = 7;
                 } else {
-                    dmg = 10; startup = 11; active = 5; rec = 9; hStun = 21; gStun = 6;
+                    dmg = 10; startup = 11; active = 5; rec = 9; hStun = 10; gStun = 6;
                 }
                 
                 this.currentAttack = { 
@@ -715,7 +715,7 @@
             else if (moveName === 'shoryuken') {
                 fighter.vy = -22; fighter.invincibleTimer = 8; 
                 fighter.currentAttack = { 
-                    name: 'EX昇龍拳(1G)', damage: 8, width: 120, height: 200, offsetX: 50, offsetY: -50, 
+                    name: 'EX昇龍拳(1G)', damage: 11, width: 120, height: 200, offsetX: 50, offsetY: -50, 
                     rec: 30, hitStun: 35, guardStun: 10, knockdown: true, launch: true 
                 };
                 fighter.stateTimer = 50; 
@@ -724,7 +724,7 @@
             } 
             else if (moveName === 'tatsumaki') {
                 fighter.currentAttack = { 
-                    name: '真空竜巻旋風脚(1G)', damage: 5, width: 150, height: 80, offsetX: -20, offsetY: 40, 
+                    name: '真空竜巻旋風脚(1G)', damage: 7, width: 150, height: 80, offsetX: -20, offsetY: 40, 
                     rec: 6, hitStun: 26, guardStun: 15, knockdown: true, launch: true 
                 };
                 fighter.stateTimer = 50; fighter.vy = -6; 
