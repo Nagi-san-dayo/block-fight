@@ -49,7 +49,7 @@
         #room-ui {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 15, 20, 0.95); z-index: 100;
-            display: none; flex-direction: column; align-items: center; justify-content: center;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
             font-family: 'Arial', sans-serif;
         }
         .room-box {
@@ -68,18 +68,21 @@
         }
         .room-btn:hover { transform: scale(1.05); filter: brightness(1.2); }
         #room-status { margin-top: 20px; color: #ffcc00; font-weight: bold; min-height: 20px; }
+        .back-title-btn { margin-top: 15px; background: #444; color: #fff; padding: 8px 20px; font-size: 14px; border: none; border-radius: 3px; cursor: pointer; }
+        .back-title-btn:hover { background: #555; }
     </style>
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
     <div class="game-wrapper">
-        <div id="room-ui">
+        <div id="room-ui" style="display: none;">
             <div class="room-box">
                 <h2 style="color: #00f0ff; margin-top: 0; font-size: 28px; letter-spacing: 1px;">ONLINE ROOM MATCH</h2>
                 <p style="color: #aaa; font-size: 14px; margin-bottom: 25px;">ルームIDを入力して対戦に参加してください</p>
                 <input type="text" id="room-id-input" class="room-input" placeholder="ROOM ID" maxlength="10"><br>
-                <button id="join-room-btn" class="room-btn">ENTER ROOM</button>
+                <button id="join-room-btn" class="room-btn">ENTER ROOM</button><br>
+                <button id="back-to-menu-btn" class="back-title-btn">BACK TO MENU</button>
                 <div id="room-status"></div>
                 <p style="color: #666; font-size: 12px; margin-top: 20px;">※2人揃うとキャラクター選択へ進みます</p>
             </div>
@@ -129,10 +132,8 @@
         const GRAVITY = 0.8;
         const FLOOR_Y = canvas.height - 60;
         
-        let gameMode = 'TITLE'; 
-        let titleSelectIndex = 0; // タイトル画面のメニュー選択用
-        const TITLE_MENU_ITEMS = ['RANDOM MATCH', 'ROOM MATCH', 'CPU ARCADE', 'TRAINING MODE'];
-        
+        let gameMode = 'TITLE'; // TITLE, CHAR_SELECT, BATTLE, GAME_OVER
+        let selectModeIndex = 0; // 0: CPU, 1: TRAINING, 2: ONLINE
         let selectIndex = 0; 
         const CHAR_COLORS = ['#ffffff', '#ff3333', '#3366ff'];
         const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
@@ -286,15 +287,11 @@
                     document.getElementById(`${id}-guard`).style.width = this.guardShield + '%';
                 }
 
-                // しゃがみ入力の即時判定と移動入力の完全遮断
                 const disableCrouchStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
                 if (!disableCrouchStates.includes(this.state) && [1, 2, 3].includes(currentDirNum)) {
-                    this.isCrouching = true; 
-                    this.height = this.baseHeight * 0.7;
-                    this.vx = 0; // しゃがみ中は横移動不可
+                    this.isCrouching = true; this.height = this.baseHeight * 0.7;
                 } else if (!disableCrouchStates.includes(this.state)) {
-                    this.isCrouching = false; 
-                    this.height = this.baseHeight;
+                    this.isCrouching = false; this.height = this.baseHeight;
                 }
 
                 if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
@@ -304,11 +301,9 @@
 
                 this.y += this.vy;
                 if (this.y + this.height >= FLOOR_Y) {
-                    if (!this.isGrounded) {
-                        this.y = FLOOR_Y - this.height;
-                        this.vy = 0;
-                        this.isGrounded = true;
-                    }
+                    this.y = FLOOR_Y - this.height; 
+                    this.vy = 0; 
+                    this.isGrounded = true;
                     
                     if (this.state === 'air_hit') {
                         this.state = 'knockdown';
@@ -777,7 +772,7 @@
             const dist = Math.abs(player1.x - player2.x);
             player2.cpuGuardType = null;
 
-            if (titleSelectIndex === 2) { // CPU ARCADE モード
+            if (selectModeIndex === 0) {
                 if (player2.state === 'idle') {
                     if (player1.state === 'attack' && dist < 260) {
                         player2.cpuGuardType = Math.random() < 0.12 ? 'x' : (Math.random() < 0.5 ? 'z' : 'a');
@@ -803,7 +798,7 @@
                     }
                 }
             } 
-            else { // TRAINING MODE などのダミー挙動
+            else {
                 player2.vx = 0; 
                 if (player1.state === 'attack' && dist < 350) {
                     if (dummyStateSetting === 2) {
@@ -819,7 +814,7 @@
             gameMode = 'BATTLE';
             document.getElementById('game-ui').style.display = 'flex';
             
-            if (titleSelectIndex === 3) { // TRAINING MODE
+            if (selectModeIndex === 1) {
                 document.getElementById('training-panel').style.display = 'block';
                 document.getElementById('timer').innerText = '∞';
             } else {
@@ -833,10 +828,10 @@
             player2 = new Fighter({ x: 900, y: 0, color: CHAR_COLORS[cpuColorIndex], isCPU: isOnlineMode ? false : true, name: CHAR_NAMES[cpuColorIndex] });
             
             document.getElementById('p1-name').innerText = player1.name + (isOnlineMode && myPlayerType === 'p1' ? ' (YOU)' : '');
-            document.getElementById('p2-name').innerText = player2.name + (isOnlineMode ? (myPlayerType === 'p2' ? ' (YOU)' : ' (NET)') : (titleSelectIndex === 3 ? ' (DUMMY)' : ' (CPU)'));
+            document.getElementById('p2-name').innerText = player2.name + (isOnlineMode ? (myPlayerType === 'p2' ? ' (YOU)' : ' (NET)') : (selectModeIndex === 1 ? ' (DUMMY)' : ' (CPU)'));
             
             clearInterval(matchTimerInterval);
-            if (titleSelectIndex === 2 && !isOnlineMode) { // CPU ARCADE のみタイマー減算
+            if (selectModeIndex === 0 && !isOnlineMode) {
                 matchTimerInterval = setInterval(() => {
                     if (gameMode === 'BATTLE') {
                         matchTimer--; document.getElementById('timer').innerText = matchTimer;
@@ -846,68 +841,49 @@
             }
         }
 
-        function setupOnlineSocket() {
-            // ルームマッチUIを表示して入力を待つ
-            document.getElementById('room-ui').style.display = 'flex';
-            document.getElementById('room-id-input').focus();
-        }
-
-        function setupRandomMatch() {
-            // ランダムマッチのモック/サーバー通信ロジック
-            socket = io("https://block-fight.onrender.com/");
-            currentRoomId = "RANDOM_" + Math.floor(Math.random() * 10000);
-            isOnlineMode = true;
-            
-            // 簡易的に直接キャラ選択へ（必要に応じてサーバーの仕様と合わせてください）
-            gameMode = 'CHAR_SELECT';
-            myPlayerType = 'p1'; 
-            alert("ランダムマッチとして接続を開始しました。(ROOM: " + currentRoomId + ")");
-        }
-
         function animate() {
             window.requestAnimationFrame(animate);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (cutInTimer > 0) {
                 cutInTimer--;
-                ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = cutInAttacker.color; let bandY = canvas.height / 2 - 80; ctx.fillRect(0, bandY, canvas.width, 160);
-                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, bandY, canvas.width, 4); ctx.fillRect(0, bandY + 160, canvas.width, 4);
-                ctx.fillStyle = '#ffffff'; ctx.font = 'italic bold 70px Impact'; ctx.textAlign = 'center';
-
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.85)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = cutInAttacker.color;
+                let bandY = canvas.height / 2 - 80;
+                ctx.fillRect(0, bandY, canvas.width, 160);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, bandY, canvas.width, 4);
+                ctx.fillRect(0, bandY + 160, canvas.width, 4);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'italic bold 70px Impact';
+                ctx.textAlign = 'center';
                 let textX = canvas.width / 2;
                 if (cutInTimer > CUTIN_DURATION - 10) {
                     textX = (canvas.width / 2) + (cutInTimer - (CUTIN_DURATION - 10)) * 60 * cutInAttacker.facing;
                 }
                 ctx.fillText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 25);
-
-                if (cutInTimer === 0) executeSpecialAfterCutIn(cutInAttacker);
+                if (cutInTimer === 0) { executeSpecialAfterCutIn(cutInAttacker); }
                 return; 
             }
 
             ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#444'; ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
 
-            // --- 新タイトル画面描画 (4つのモード) ---
+            // --- 新しい統合タイトル画面メニュー描画 ---
             if (gameMode === 'TITLE') {
                 ctx.fillStyle = '#ffcc00'; ctx.font = '68px Impact'; ctx.textAlign = 'center';
-                ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 180);
+                ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 200);
                 
-                // メニュー項目の表示
-                for(let i = 0; i < TITLE_MENU_ITEMS.length; i++) {
-                    if (titleSelectIndex === i) {
-                        ctx.fillStyle = '#00ffff';
-                        ctx.font = '36px Arial Black';
-                        ctx.fillText('➔ ' + TITLE_MENU_ITEMS[i], canvas.width / 2, 320 + i * 65);
-                    } else {
-                        ctx.fillStyle = '#666';
-                        ctx.font = '30px Arial';
-                        ctx.fillText(TITLE_MENU_ITEMS[i], canvas.width / 2, 320 + i * 65);
-                    }
+                const modes = ['1. CPU MATCH (ARCADE)', '2. TRAINING MODE', '3. ONLINE ROOM MATCH'];
+                for(let i=0; i<3; i++) {
+                    ctx.fillStyle = (selectModeIndex === i) ? '#00ffff' : '#888';
+                    ctx.font = (selectModeIndex === i) ? '36px Arial Black' : '30px Arial';
+                    ctx.fillText((selectModeIndex === i ? '➔ ' : '') + modes[i], canvas.width / 2, 340 + i * 70);
                 }
                 
                 ctx.fillStyle = '#ffcc00'; ctx.font = '20px Arial';
-                ctx.fillText('W / X: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 620);
+                ctx.fillText('W / S: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 580);
                 return;
             }
 
@@ -940,7 +916,7 @@
                 ctx.fillText('PRESS SPACE TO RETURN TO TITLE', canvas.width / 2, 440);
             }
 
-            if (titleSelectIndex === 3 && gameMode === 'BATTLE') { // TRAINING MODE
+            if (selectModeIndex === 1 && gameMode === 'BATTLE') {
                 const p1GettingHit = player1.state === 'hitstun' || player1.state === 'knockdown' || player1.state === 'air_hit' || player1.comboTimer > 0;
                 if (!p1GettingHit && player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
                 
@@ -966,54 +942,30 @@
                 }
             } else {
                 p1Dir = getJoystickDirection();
-                if (gameMode === 'BATTLE' && titleSelectIndex === 3 && dummyStateSetting === 1) {
+                if (gameMode === 'BATTLE' && selectModeIndex === 1 && dummyStateSetting === 1) {
                     updateCPU(); player2.update(2); 
                 } else {
                     updateCPU(); player2.update(5);
                 }
             }
 
-            // プレイヤー1の移動
             const disableMoveStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
             if (!disableMoveStates.includes(player1.state) && (!isOnlineMode || myPlayerType === 'p1')) {
                 player1.facing = player1.x < player2.x ? 1 : -1;
-                
-                // しゃがみ中でない場合のみジャンプを許可
-                if ([7, 8, 9].includes(p1Dir) && player1.isGrounded && !player1.isCrouching) {
-                    player1.vy = -18;
-                }
-                
-                // しゃがみ中でない場合のみ左右移動を許可
-                if (!player1.isCrouching) {
-                    if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; 
-                    else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; 
-                    else player1.vx = 0;
-                } else {
-                    player1.vx = 0;
-                }
+                if ([7, 8, 9].includes(p1Dir) && player1.isGrounded) player1.vy = -18;
+                if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; else player1.vx = 0;
             } else if (player1.state !== 'attack' || !player1.currentAttack || !player1.currentAttack.name.includes('竜巻')) { 
                 if(player1.state === 'attack' && player1.isGrounded) player1.vx = 0; 
             }
             player1.update(p1Dir);
 
-            // プレイヤー2の移動
             if (isOnlineMode) {
                 if (myPlayerType === 'p2') {
                     let p2Dir = getJoystickDirection();
                     if (!disableMoveStates.includes(player2.state)) {
                         player2.facing = player2.x < player1.x ? 1 : -1;
-                        
-                        if ([7, 8, 9].includes(p2Dir) && player2.isGrounded && !player2.isCrouching) {
-                            player2.vy = -18;
-                        }
-                        
-                        if (!player2.isCrouching) {
-                            if ([1, 4, 7].includes(p2Dir)) player2.vx = -6; 
-                            else if ([3, 6, 9].includes(p2Dir)) player2.vx = 6; 
-                            else player2.vx = 0;
-                        } else {
-                            player2.vx = 0;
-                        }
+                        if ([7, 8, 9].includes(p2Dir) && player2.isGrounded) player2.vy = -18;
+                        if ([1, 4, 7].includes(p2Dir)) player2.vx = -6; else if ([3, 6, 9].includes(p2Dir)) player2.vx = 6; else player2.vx = 0;
                     } else if (player2.state !== 'attack' || !player2.currentAttack || !player2.currentAttack.name.includes('竜巻')) {
                         if(player2.state === 'attack' && player2.isGrounded) player2.vx = 0;
                     }
@@ -1030,7 +982,6 @@
                 }
             }
 
-            // 飛び道具・衝突判定
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 let p = projectiles[i]; p.update(); p.draw();
                 let target = p.owner === player1 ? player2 : player1;
@@ -1091,34 +1042,28 @@
 
             if (isSpace) { event.preventDefault(); }
 
-            // 新タイトルメニュー画面の操作
+            // TITLE画面でのメニュー操作
             if (gameMode === 'TITLE') {
-                if (key === 'w') { 
-                    titleSelectIndex = (titleSelectIndex - 1 + 4) % 4; 
-                }
-                if (key === 'x') { 
-                    titleSelectIndex = (titleSelectIndex + 1) % 4; 
-                }
+                if (key === 'w') { selectModeIndex = (selectModeIndex - 1 + 3) % 3; }
+                if (key === 's') { selectModeIndex = (selectModeIndex + 1) % 3; }
                 if (isSpace) { 
-                    if (titleSelectIndex === 0) {
-                        setupRandomMatch();
-                    } else if (titleSelectIndex === 1) {
-                        setupOnlineSocket();
+                    if (selectModeIndex === 2) {
+                        // ルームマッチ選択時のみ入力UIを起動
+                        document.getElementById('room-ui').style.display = 'flex';
                     } else {
-                        // CPU ARCADE 又は TRAINING MODE
+                        // CPU、トレーニングはそのままキャラクターセレクトへ
                         gameMode = 'CHAR_SELECT'; 
                     }
                 } 
                 return;
             }
-            
             if (gameMode === 'CHAR_SELECT') {
                 if (key === 'a') { selectIndex = (selectIndex - 1 + 3) % 3; }
                 if (key === 'd') { selectIndex = (selectIndex + 1) % 3; }
                 if (isSpace) { 
                     if (isOnlineMode) {
                         socket.emit('characterSelected', { roomId: currentRoomId, playerType: myPlayerType, selectIndex: selectIndex });
-                        document.getElementById('p1-name').innerText = "READY... WALTING FOR OPPONENT";
+                        document.getElementById('p1-name').innerText = "READY... WAITING FOR OPPONENT";
                     } else {
                         startBattle(); 
                     }
@@ -1139,7 +1084,7 @@
                 return;
             }
 
-            if (gameMode === 'BATTLE' && titleSelectIndex === 3 && key === 't' && !isOnlineMode) {
+            if (gameMode === 'BATTLE' && selectModeIndex === 1 && key === 't' && !isOnlineMode) {
                 dummyStateSetting = (dummyStateSetting + 1) % 4;
                 document.getElementById('dummy-state-text').innerText = DUMMY_STRINGS[dummyStateSetting];
                 return;
@@ -1235,7 +1180,12 @@
             }
         });
 
-        // --- オンライン対戦用 Socket.io イベント ---
+        // --- オンライン通信設定イベント ---
+        document.getElementById('back-to-menu-btn').addEventListener('click', () => {
+            document.getElementById('room-ui').style.display = 'none';
+            gameMode = 'TITLE';
+        });
+
         document.getElementById('join-room-btn').addEventListener('click', () => {
             const roomId = document.getElementById('room-id-input').value.trim();
             if (!roomId) {
@@ -1263,7 +1213,7 @@
                 setTimeout(() => {
                     document.getElementById('room-ui').style.display = 'none';
                     isOnlineMode = true;
-                    gameMode = 'CHAR_SELECT'; 
+                    gameMode = 'CHAR_SELECT'; // 1対1が確定したらキャラ選択へ移行
                 }, 1000);
             });
 
