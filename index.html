@@ -636,7 +636,7 @@
                 if (attack.isProjectile) stopFrames = 4;
 
                 this.hitstopTimer = stopFrames; attacker.hitstopTimer = stopFrames;
-                if (attack.name && attack.name.includes('昇龍拳') && !attack.name.includes('OD')) {
+                if (attack.name && attack.name.includes('四角アッパー') && !attack.name.includes('OD')) {
                     attacker.shoryuCancelWindow = 30;
                 }
 
@@ -1034,7 +1034,7 @@
                     let canHit = true;
                     if (player1.state === 'air_hit') {
                         const atkName = player2.currentAttack.name;
-                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) canHit = false;
+                        if (!atkName.includes('強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
                     }
                     if (canHit && player1.state !== 'knockdown' && player1.state !== 'guardstun') {
                         if (checkCollision(player2.attackBox, player1)) {
