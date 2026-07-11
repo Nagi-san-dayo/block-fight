@@ -167,7 +167,7 @@
                 this.width = isEX ? 110 : 70; this.height = isEX ? 90 : 60;
                 this.speed = (isEX ? 14 : 7 + strength * 2.5) * direction; 
                 this.owner = owner; 
-                this.name = isEX ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength];
+                this.name = isEX ? '四角飛角(1G)' : ['弱 四角飛角','中 四角飛角','強 四角飛角'][strength];
                 this.damage = isEX ? 18 : 8; 
                 this.hitStun = isEX ? 30 : 15; this.guardStun = isEX ? 18 : 10; 
                 this.hitType = 'high'; this.isActive = true; this.isEX = isEX; 
@@ -253,7 +253,7 @@
                 else if (this.state === 'air_hit') ctx.fillStyle = '#ff66cc'; 
                 else if (this.state === 'hitstun') ctx.fillStyle = '#ff4444';
                 else if (this.state === 'guardstun') ctx.fillStyle = '#44ff44';
-                else if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('DRIVE RUSH')) ctx.fillStyle = '#44ff88'; // ラッシュ中
+                else if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('BLOCK RUSH')) ctx.fillStyle = '#44ff88'; // ラッシュ中
                 else if (this.state === 'attack') ctx.fillStyle = '#ffaa00';
                 else {
                     if (this === player1 && activeMoveKey === 'x') ctx.fillStyle = '#ffffff';
@@ -396,8 +396,8 @@
                 this.state = 'attack'; // 便宜上attack状態として扱う
                 this.stateTimer = 25; // ラッシュ継続時間
                 this.vx = this.facing * 14; // 高速移動
-                this.currentAttack = { name: 'DRIVE RUSH', isDash: true };
-                document.getElementById((this === player1) ? 'p1-status' : 'p2-status').innerText = 'DRIVE RUSH';
+                this.currentAttack = { name: 'BLOCK RUSH', isDash: true };
+                document.getElementById((this === player1) ? 'p1-status' : 'p2-status').innerText = 'BLOCK RUSH';
                 return true;
             }
 
@@ -455,7 +455,7 @@
                 if (isOverhead) { name = '鎖骨割り'; type = 'overhead'; }
 
                 let isSweep = isCrouching && isKick && strengthNum === 2;
-                if (isSweep) { name = '足払い(屈強K)'; }
+                if (isSweep) { name = 'しゃがみ強K'; }
 
                 this.state = 'attack';
                 this.hasHitThisAttack = false;
@@ -543,9 +543,9 @@
 
                     this.state = 'attack'; this.vx = 0;
                     let exName = '';
-                    if (moveName === 'hadouken') exName = '真空波動拳(OD)';
-                    if (moveName === 'shoryuken') exName = 'EX昇龍拳(OD)';
-                    if (moveName === 'tatsumaki') exName = '真空竜巻旋風脚(OD)';
+                    if (moveName === 'hadouken') exName = 'EX四角飛角(G1)';
+                    if (moveName === 'shoryuken') exName = 'EX四角アッパー(G1)';
+                    if (moveName === 'tatsumaki') exName = 'EX四角回転(G1)';
                     this.currentAttack = { name: exName, rawMoveName: moveName }; 
                     
                     cutInTimer = CUTIN_DURATION; cutInAttacker = this;
@@ -561,7 +561,7 @@
 
                 if (moveName === 'hadouken') {
                     this.currentAttack = { 
-                        name: ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
+                        name: ['弱 四角飛角','中 四角飛角','強 四角飛角'][strength], 
                         isProjectile: true, damage: 8, hitStun: 15, guardStun: -3, knockdown: false, launch: false
                     };
                     this.stateTimer = 42;
@@ -573,7 +573,7 @@
                     let jumpHeight = -16 - strength * 2;
                     this.vy = jumpHeight; this.invincibleTimer = 8; 
                     this.currentAttack = { 
-                        name: ['弱 昇龍拳','中 昇龍拳','強 昇龍拳'][strength], 
+                        name: ['弱 四角アッパー','中 四角アッパー','強 四角アッパー'][strength], 
                         damage: 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, 
                         rec: 30, hitStun: 35, guardStun: -20, knockdown: true, launch: true 
                     };
@@ -582,7 +582,7 @@
                 } 
                 else if (moveName === 'tatsumaki') {
                     this.currentAttack = { 
-                        name: ['弱 竜巻旋風脚','中 竜巻旋風脚','強 竜巻旋風脚'][strength], 
+                        name: ['弱 四角回転','中 四角回転','強 四角回転'][strength], 
                         damage: 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, 
                         rec: 10, hitStun: 26, guardStun: -8, knockdown: true, launch: true 
                     };
@@ -728,18 +728,18 @@
             let moveName = fighter.currentAttack.rawMoveName;
             const statusId = (fighter === player1) ? 'p1-status' : 'p2-status';
             if (moveName === 'hadouken') {
-                fighter.currentAttack = { name: '真空波動拳(OD)', isProjectile: true, damage: 18, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角飛角(G1))', isProjectile: true, damage: 18, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
                 fighter.stateTimer = 45; 
                 let spawnX = fighter.facing === 1 ? fighter.x + fighter.width + 10 : fighter.x - 80;
                 projectiles.push(new Fireball(spawnX, fighter.y + 30, fighter.facing, fighter, true, 3));
             } 
             else if (moveName === 'shoryuken') {
                 fighter.vy = -22; fighter.invincibleTimer = 8; 
-                fighter.currentAttack = { name: 'EX昇龍拳(OD)', damage: 11, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角アッパー(G1)', damage: 11, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
                 fighter.stateTimer = 50; fighter.vx = fighter.facing * 4; fighter.multihitCount = 2; fighter.multihitTimer = 5;
             } 
             else if (moveName === 'tatsumaki') {
-                fighter.currentAttack = { name: '真空竜巻旋風脚(OD)', damage: 7, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角回転(G1)', damage: 7, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
                 fighter.stateTimer = 50; fighter.vy = -6; fighter.tatsuSpeed = fighter.facing * 9; fighter.multihitCount = 4; fighter.multihitTimer = 10;
             }
             document.getElementById(statusId).innerText = fighter.currentAttack.name;
