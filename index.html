@@ -466,11 +466,11 @@
                 // 全体的な硬直を減らし、キャンセルを前提とするバランスに調整
                 let dmg, startup, active, rec, hStun, gStun;
                 if (strengthNum === 0) {
-                    dmg = 3; startup = 4; active = 3; rec = 6; hStun = 9; gStun = 6;
+                    dmg = 3; startup = 4; active = 1; rec = 6; hStun = 9; gStun = 6;
                 } else if (strengthNum === 1) {
-                    dmg = 5; startup = 6; active = 4; rec = 10; hStun = 13; gStun = 9;
+                    dmg = 5; startup = 6; active = 2; rec = 10; hStun = 13; gStun = 9;
                 } else {
-                    dmg = 10; startup = 9; active = 5; rec = 16; hStun = 18; gStun = 12;
+                    dmg = 10; startup = 9; active = 2; rec = 16; hStun = 18; gStun = 12;
                 }
 
                 // DR中は有利フレーム増加 (+4F)
@@ -524,7 +524,7 @@
 
             startSpecialAttack(moveName, strength) {
                 if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return false;
-                let isShoryuToEXCancel = this.currentAttack && this.currentAttack.name.includes('昇龍拳') && !this.currentAttack.name.includes('EX') && strength === 3 && (this.hitstopTimer > 0 || this.shoryuCancelWindow > 0);
+                let isShoryuToEXCancel = this.currentAttack && this.currentAttack.name.includes('四角アッパー') && !this.currentAttack.name.includes('EX') && strength === 3 && (this.hitstopTimer > 0 || this.shoryuCancelWindow > 0);
                 
                 if (this.state === 'attack' && !isShoryuToEXCancel) {
                     if (this.currentAttack && !this.currentAttack.isProjectile && !this.currentAttack.isDash) {
@@ -1018,7 +1018,7 @@
                     let canHit = true;
                     if (player2.state === 'air_hit') {
                         const atkName = player1.currentAttack.name;
-                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) canHit = false;
+                        if (!atkName.includes('強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
                     }
                     if (canHit && player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
                         if (checkCollision(player1.attackBox, player2)) {
