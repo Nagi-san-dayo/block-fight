@@ -317,7 +317,7 @@
                 }
 
                 // 竜巻中の移動処理（状態タイマーによる強制リセットを削除）
-                if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
+                if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('回転')) {
                     this.vx = this.tatsuSpeed;
                 }
 
@@ -632,7 +632,7 @@
                 let stopFrames = 8;
                 if (attack.name && attack.name.includes('弱')) stopFrames = 5;
                 if (attack.name && attack.name.includes('強')) stopFrames = 11;
-                if (attack.name && (attack.name.includes('昇龍') || attack.name.includes('竜巻'))) stopFrames = 12;
+                if (attack.name && (attack.name.includes('アッパー') || attack.name.includes('回転'))) stopFrames = 12;
                 if (attack.isProjectile) stopFrames = 4;
 
                 this.hitstopTimer = stopFrames; attacker.hitstopTimer = stopFrames;
@@ -728,18 +728,18 @@
             let moveName = fighter.currentAttack.rawMoveName;
             const statusId = (fighter === player1) ? 'p1-status' : 'p2-status';
             if (moveName === 'hadouken') {
-                fighter.currentAttack = { name: 'EX四角飛角(G1))', isProjectile: true, damage: 18, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角飛角(G1))', isProjectile: true, damage: 30, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
                 fighter.stateTimer = 45; 
                 let spawnX = fighter.facing === 1 ? fighter.x + fighter.width + 10 : fighter.x - 80;
                 projectiles.push(new Fireball(spawnX, fighter.y + 30, fighter.facing, fighter, true, 3));
             } 
             else if (moveName === 'shoryuken') {
                 fighter.vy = -22; fighter.invincibleTimer = 8; 
-                fighter.currentAttack = { name: 'EX四角アッパー(G1)', damage: 11, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角アッパー(G1)', damage: 20, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
                 fighter.stateTimer = 50; fighter.vx = fighter.facing * 4; fighter.multihitCount = 2; fighter.multihitTimer = 5;
             } 
             else if (moveName === 'tatsumaki') {
-                fighter.currentAttack = { name: 'EX四角回転(G1)', damage: 7, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角回転(G1)', damage: 10, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
                 fighter.stateTimer = 50; fighter.vy = -6; fighter.tatsuSpeed = fighter.facing * 9; fighter.multihitCount = 4; fighter.multihitTimer = 10;
             }
             document.getElementById(statusId).innerText = fighter.currentAttack.name;
@@ -1020,7 +1020,7 @@
                         const atkName = player1.currentAttack.name;
                         if (!atkName.includes('強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
                     }
-                    if (canHit && player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
+                    if (canHit && player2.state !== 'knockdown') { 
                         if (checkCollision(player1.attackBox, player2)) {
                             player2.evaluateHit(player1.currentAttack, player1.currentAttack.hitType || 'high');
                             player1.hasHitThisAttack = true; player1.addMeter(0.06);
@@ -1036,7 +1036,7 @@
                         const atkName = player2.currentAttack.name;
                         if (!atkName.includes('強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
                     }
-                    if (canHit && player1.state !== 'knockdown' && player1.state !== 'guardstun') {
+                    if (canHit && player1.state !== 'knockdown') {
                         if (checkCollision(player2.attackBox, player1)) {
                             player1.evaluateHit(player2.currentAttack, player2.currentAttack.hitType || 'high'); 
                             player2.hasHitThisAttack = true; player2.addMeter(0.06);
