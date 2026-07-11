@@ -25,9 +25,18 @@
         .hp-bar-container { height: 28px; background-color: #442222; border: 3px solid #fff; margin-bottom: 4px; overflow: hidden; }
         .hp-bar { height: 100%; background: linear-gradient(to bottom, #ffcc00, #ff6600); width: 100%; transition: width 0.05s ease-out; }
         
-        .guard-bar-container { height: 8px; background-color: #333; border: 1px solid #777; margin-bottom: 4px; }
-        .guard-bar { height: 100%; background-color: #00bfff; width: 100%; transition: width 0.1s ease-out; }
-        .guard-crushed { background-color: #ff33cc !important; }
+        /* ドライブゲージUI (旧ガードゲージ) */
+        .drive-bar-container { 
+            height: 18px; background-color: #222; border: 2px solid #555; margin-bottom: 4px; display: flex;
+        }
+        .drive-stock {
+            flex: 1; border-right: 1px solid #111; background-color: #333; position: relative;
+        }
+        .drive-stock:last-child { border-right: none; }
+        .drive-fill {
+            height: 100%; background: linear-gradient(to bottom, #44ff44, #00aa00); width: 100%; transition: width 0.1s;
+        }
+        .drive-burnout .drive-fill { background: linear-gradient(to bottom, #ff4444, #aa0000); }
 
         .gauge-bar-container { height: 14px; background-color: #222; border: 2px solid #aaa; position: relative; }
         .gauge-bar { height: 100%; background: linear-gradient(to right, #00ffcc, #0099ff); width: 0%; }
@@ -38,7 +47,7 @@
         .status-text { font-size: 18px; font-weight: bold; color: #00ffff; height: 22px; text-shadow: 1px 1px #000; }
         .frame-text { font-size: 14px; color: #ffcc00; }
 
-        /* トレーニングモード用設定表示パネル */
+        /* トレーニングパネル */
         #training-panel {
             position: absolute; bottom: 80px; left: 5%; background: rgba(0,0,0,0.7);
             padding: 10px 20px; border-radius: 5px; border: 1px solid #555; font-family: Arial, sans-serif;
@@ -52,20 +61,9 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             font-family: 'Arial', sans-serif;
         }
-        .room-box {
-            background: #222; padding: 40px; border-radius: 10px; border: 2px solid #444;
-            text-align: center; box-shadow: 0 0 20px rgba(0,210,255,0.3);
-        }
-        .room-input {
-            padding: 12px; font-size: 18px; width: 250px; text-align: center;
-            border: 2px solid #555; background: #111; color: #fff; margin-bottom: 20px;
-            font-weight: bold; letter-spacing: 2px;
-        }
-        .room-btn {
-            padding: 12px 30px; font-size: 18px; font-weight: bold; cursor: pointer;
-            background: linear-gradient(135deg, #00f0ff, #0077ff); color: white;
-            border: none; border-radius: 5px; transition: 0.2s;
-        }
+        .room-box { background: #222; padding: 40px; border-radius: 10px; border: 2px solid #444; text-align: center; box-shadow: 0 0 20px rgba(0,210,255,0.3); }
+        .room-input { padding: 12px; font-size: 18px; width: 250px; text-align: center; border: 2px solid #555; background: #111; color: #fff; margin-bottom: 20px; font-weight: bold; letter-spacing: 2px; }
+        .room-btn { padding: 12px 30px; font-size: 18px; font-weight: bold; cursor: pointer; background: linear-gradient(135deg, #00f0ff, #0077ff); color: white; border: none; border-radius: 5px; transition: 0.2s; }
         .room-btn:hover { transform: scale(1.05); filter: brightness(1.2); }
         #room-status { margin-top: 20px; color: #ffcc00; font-weight: bold; min-height: 20px; }
         .back-title-btn { margin-top: 15px; background: #444; color: #fff; padding: 8px 20px; font-size: 14px; border: none; border-radius: 3px; cursor: pointer; }
@@ -92,7 +90,7 @@
             <div class="bar-wrapper">
                 <div id="p1-name" style="font-size:18px; text-shadow: 2px 2px #000;">PLAYER 1</div>
                 <div class="hp-bar-container"><div id="p1-hp" class="hp-bar"></div></div>
-                <div class="guard-bar-container"><div id="p1-guard" class="guard-bar"></div></div>
+                <div class="drive-bar-container" id="p1-drive-container"></div>
                 <div class="gauge-bar-container">
                     <div id="p1-gauge" class="gauge-bar"></div>
                     <div id="p1-gauge-text" class="gauge-text">0 / 3</div>
@@ -104,7 +102,7 @@
             <div class="bar-wrapper" style="text-align: right;">
                 <div id="p2-name" style="font-size:18px; text-shadow: 2px 2px #000;">CPU</div>
                 <div class="hp-bar-container"><div id="p2-hp" class="hp-bar"></div></div>
-                <div class="guard-bar-container"><div id="p2-guard" class="guard-bar"></div></div>
+                <div class="drive-bar-container" id="p2-drive-container"></div>
                 <div class="gauge-bar-container">
                     <div id="p2-gauge" class="gauge-bar"></div>
                     <div id="p2-gauge-text" class="gauge-text">0 / 3</div>
@@ -120,13 +118,14 @@
         <div id="training-panel">
             <strong style="color: #00ffcc;">TRAINING MODE CONTROL</strong><br>
             【Tキー】ダミー状態切替: <span id="dummy-state-text" style="color: #ffcc00; font-weight:bold;">STAND</span><br>
-            ※体力・パワーゲージはコンボ終了時に自動回復、ゲージは常時MAXになります。
+            ※体力・ドライブゲージ・パワーゲージはコンボ終了時に自動回復します。
         </div>
 
         <canvas id="gameCanvas" width="1280" height="720"></canvas>
     </div>
 
     <script>
+        // --- 初期設定・UI生成 ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const GRAVITY = 0.8;
@@ -139,7 +138,7 @@
         const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
 
         let dummyStateSetting = 0;
-        const DUMMY_STRINGS = ['立ち (IDLE)', 'しゃがみ (CROUCH)', '常時ガード (GUARD)', 'ジャストパリィ (PARRY)'];
+        const DUMMY_STRINGS = ['立ち (IDLE)', 'しゃがみ (CROUCH)', '常時ガード (ALWAYS GUARD)', '途中からガード (COMBO GUARD)', 'ジャストパリィ (PARRY)'];
 
         let socket = null;
         let myPlayerType = null; 
@@ -150,27 +149,33 @@
         let cutInAttacker = null;
         const CUTIN_DURATION = 40; 
 
+        // ドライブゲージUIの生成 (6本分)
+        function createDriveUI(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            for (let i = 0; i < 6; i++) {
+                container.innerHTML += `<div class="drive-stock"><div class="drive-fill" id="${containerId}-stock-${i}"></div></div>`;
+            }
+        }
+        createDriveUI('p1-drive-container');
+        createDriveUI('p2-drive-container');
+
+        // --- クラス定義 ---
         class Fireball {
             constructor(x, y, direction, owner, isEX = false, strength = 0) {
-                this.x = x; this.y = y; 
-                this.width = isEX ? 110 : 70; 
-                this.height = isEX ? 90 : 60;
+                this.x = x; this.y = y;
+                this.width = isEX ? 110 : 70; this.height = isEX ? 90 : 60;
                 this.speed = (isEX ? 14 : 7 + strength * 2.5) * direction; 
                 this.owner = owner; 
                 this.name = isEX ? '真空波動拳(1G)' : ['弱 波動拳','中 波動拳','強 波動拳'][strength];
                 this.damage = isEX ? 18 : 8; 
-                this.hitStun = isEX ? 30 : 15; 
-                this.guardStun = isEX ? 18 : 10; 
-                this.hitType = 'high'; 
-                this.isActive = true; 
-                this.isEX = isEX; 
-                this.hits = isEX ? 3 : 1; 
-                this.knockdown = isEX; 
-                this.launch = isEX; 
+                this.hitStun = isEX ? 30 : 15; this.guardStun = isEX ? 18 : 10; 
+                this.hitType = 'high'; this.isActive = true; this.isEX = isEX; 
+                this.hits = isEX ? 3 : 1; this.knockdown = isEX; this.launch = isEX; 
             }
             update() { 
-                this.x += this.speed; 
-                if (this.x < -100 || this.x > canvas.width + 100) this.isActive = false; 
+                this.x += this.speed;
+                if (this.x < -100 || this.x > canvas.width + 100) this.isActive = false;
             }
             draw() { 
                 ctx.fillStyle = this.isEX ? '#cc33ff' : '#00f3ff'; 
@@ -183,9 +188,16 @@
         class Fighter {
             constructor({ x, y, color, isCPU, name }) {
                 this.x = x; this.y = y; this.baseHeight = 220; this.height = this.baseHeight; this.width = 100;
-                this.vx = 0; this.vy = 0; this.color = color; this.isCPU = isCPU; this.name = name;
+                this.vx = 0; this.vy = 0;
+                this.color = color; this.isCPU = isCPU; this.name = name;
+                
                 this.hp = 100; this.meter = 0.0; 
-                this.guardShield = 100; this.isGuardCrushed = false; this.guardCrushTimer = 0;
+                
+                // ドライブシステム
+                this.drive = 6.0; // Max 6.0
+                this.isBurnout = false;
+                this.burnoutTimer = 0;
+
                 this.facing = 1; this.isGrounded = false; this.state = 'idle'; this.stateTimer = 0;
                 this.hitstopTimer = 0; 
                 this.currentAttack = null; this.hasHitThisAttack = false; 
@@ -195,9 +207,7 @@
                 this.cpuGuardType = null; this.multihitCount = 0; this.multihitTimer = 0;
                 this.tatsuSpeed = 0;
                 
-                this.bufferedInput = null; 
-                this.shoryuCancelWindow = 0; 
-                this.weakChainCount = 0; 
+                this.bufferedInput = null; this.shoryuCancelWindow = 0; this.weakChainCount = 0; 
             }
 
             addMeter(amount) {
@@ -207,22 +217,28 @@
                 document.getElementById(`${id}-gauge-text`).innerText = `${this.meter.toFixed(1)} / 3`;
             }
 
-            updateGuardShield(amount) {
-                if (this.isGuardCrushed) return;
-                this.guardShield = Math.max(0, this.guardShield + amount);
+            updateDrive(amount) {
+                this.drive = Math.max(0, Math.min(6.0, this.drive + amount));
                 const id = (this === player1) ? 'p1' : 'p2';
-                if (this.guardShield <= 0) {
-                    this.isGuardCrushed = true; this.guardCrushTimer = 240; 
-                    document.getElementById(`${id}-guard`).classList.add('guard-crushed');
+                
+                if (this.drive <= 0 && !this.isBurnout) {
+                    this.isBurnout = true;
+                    this.burnoutTimer = 600; // 約10秒
+                    document.getElementById(`${id}-drive-container`).classList.add('drive-burnout');
+                    document.getElementById(`${id}-status`).innerText = 'BURNOUT!!';
                 }
-                document.getElementById(`${id}-guard`).style.width = this.guardShield + '%';
+
+                // UI反映
+                for (let i = 0; i < 6; i++) {
+                    let fillRatio = Math.max(0, Math.min(1, this.drive - i));
+                    document.getElementById(`${id}-drive-container-stock-${i}`).style.width = (fillRatio * 100) + '%';
+                }
             }
 
             updateAttackBox() {
                 if (this.state === 'attack' && this.currentAttack && !this.currentAttack.isProjectile) {
                     const data = this.currentAttack;
-                    this.attackBox.width = data.width; 
-                    this.attackBox.height = data.height;
+                    this.attackBox.width = data.width; this.attackBox.height = data.height;
                     this.attackBox.y = this.y + data.offsetY;
                     this.attackBox.x = this.facing === 1 ? this.x + data.offsetX : this.x - data.width + (this.width - data.offsetX);
                 } else {
@@ -231,28 +247,28 @@
             }
 
             draw() {
-                if (this.isGuardCrushed) ctx.fillStyle = '#ff33cc'; 
+                if (this.isBurnout && this.state !== 'attack' && this.state !== 'hitstun') ctx.fillStyle = '#666'; // バーンアウト中は少し暗く
                 else if (this.invincible && this.state !== 'knockdown') ctx.fillStyle = '#ffff66'; 
-                else if (this.state === 'knockdown') ctx.fillStyle = '#884444'; 
+                else if (this.state === 'knockdown') ctx.fillStyle = '#884444';
                 else if (this.state === 'air_hit') ctx.fillStyle = '#ff66cc'; 
                 else if (this.state === 'hitstun') ctx.fillStyle = '#ff4444';
                 else if (this.state === 'guardstun') ctx.fillStyle = '#44ff44';
+                else if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('DRIVE RUSH')) ctx.fillStyle = '#44ff88'; // ラッシュ中
                 else if (this.state === 'attack') ctx.fillStyle = '#ffaa00';
                 else {
                     if (this === player1 && activeMoveKey === 'x') ctx.fillStyle = '#ffffff';
-                    else if (this === player1 && (activeMoveKey === 'a' || activeMoveKey === 'z')) ctx.fillStyle = '#00ffff';
                     else ctx.fillStyle = this.color;
                 }
                 
                 let drawHeight = this.state === 'knockdown' ? this.baseHeight * 0.3 : this.height;
                 let drawY = this.state === 'knockdown' ? this.y + (this.baseHeight - drawHeight) : this.y;
-                
                 ctx.fillRect(this.x, drawY, this.width, drawHeight);
                 
                 ctx.fillStyle = '#000';
                 let eyeX = this.facing === 1 ? this.x + this.width - 25 : this.x + 15;
                 if(this.state !== 'knockdown') ctx.fillRect(eyeX, drawY + 25, 15, 15);
-
+                
+                // 攻撃判定の可視化
                 if (this.state === 'attack' && this.attackBox.width > 0) {
                     ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
                     ctx.fillRect(this.attackBox.x, this.attackBox.y, this.attackBox.width, this.attackBox.height);
@@ -273,21 +289,23 @@
                 }
 
                 if (this.shoryuCancelWindow > 0) this.shoryuCancelWindow--;
-
+                
+                // ドライブ・バーンアウト更新
                 const id = (this === player1) ? 'p1' : 'p2';
-                if (this.isGuardCrushed) {
-                    this.guardCrushTimer--;
-                    if (this.guardCrushTimer <= 0) {
-                        this.isGuardCrushed = false; this.guardShield = 100;
-                        document.getElementById(`${id}-guard`).classList.remove('guard-crushed');
+                if (this.isBurnout) {
+                    this.burnoutTimer--;
+                    if (this.burnoutTimer <= 0) {
+                        this.isBurnout = false;
+                        this.updateDrive(6.0); // 全回復
+                        document.getElementById(`${id}-drive-container`).classList.remove('drive-burnout');
                     }
-                } else if (this.state === 'idle' && this.guardShield < 100) {
-                    this.guardShield = Math.min(100, this.guardShield + 0.1);
-                    document.getElementById(`${id}-guard`).style.width = this.guardShield + '%';
+                } else if (this.state !== 'attack' && this.state !== 'hitstun' && this.state !== 'guardstun') {
+                    // 自然回復
+                    this.updateDrive(0.005);
                 }
 
                 let prevHeight = this.height;
-                const disableCrouchStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
+                const disableCrouchStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit', 'dash'];
                 if (!disableCrouchStates.includes(this.state) && [1, 2, 3].includes(currentDirNum)) {
                     this.isCrouching = true; this.height = this.baseHeight * 0.7;
                 } else if (!disableCrouchStates.includes(this.state)) {
@@ -298,42 +316,42 @@
                     this.y += (prevHeight - this.height);
                 }
 
-                /* 【バグ修正1】竜巻旋風脚のモーションが終了する（タイマーが0になる）までは高度を維持する */
+                // 竜巻中の移動処理（状態タイマーによる強制リセットを削除）
                 if (this.state === 'attack' && this.currentAttack && this.currentAttack.name.includes('竜巻')) {
                     this.vx = this.tatsuSpeed;
-                    if (this.stateTimer > 0 && this.vy > 0 && !this.isGrounded) this.vy = 0; 
                 }
 
                 this.y += this.vy;
                 if (this.y + this.height >= FLOOR_Y) {
-                    this.y = FLOOR_Y - this.height; 
+                    this.y = FLOOR_Y - this.height;
                     this.vy = 0; 
                     this.isGrounded = true;
                     
                     if (this.state === 'air_hit') {
-                        this.state = 'knockdown';
-                        this.stateTimer = 50; 
+                        this.state = 'knockdown'; this.stateTimer = 50; this.vx = 0;
+                    } else if (this.state === 'knockdown' || this.state === 'dash') {
                         this.vx = 0;
-                    } else if (this.state === 'knockdown') {
-                        this.vx = 0; 
                     }
                 } else { 
-                    this.vy += GRAVITY; 
-                    this.isGrounded = false; 
+                    this.vy += GRAVITY; this.isGrounded = false; 
                 }
 
                 this.x += this.vx;
-                if (this.x < 0) this.x = 0; if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+                // 画面端
+                if (this.x < 0) { this.x = 0; if(this.state === 'dash') this.vx = 0; }
+                if (this.x + this.width > canvas.width) { this.x = canvas.width - this.width; if(this.state === 'dash') this.vx = 0; }
 
                 this.updateAttackBox();
 
                 if (this.multihitCount > 0) {
                     this.multihitTimer--;
                     if (this.multihitTimer <= 0) {
-                        this.multihitTimer = 7; this.multihitCount--; this.hasHitThisAttack = false; 
+                        this.multihitTimer = 7;
+                        this.multihitCount--; this.hasHitThisAttack = false; 
                         let target = (this === player1) ? player2 : player1;
                         if (checkCollision(this.attackBox, target)) {
-                            target.evaluateHit(this.currentAttack, 'high'); this.hasHitThisAttack = true; this.addMeter(0.05);
+                            target.evaluateHit(this.currentAttack, 'high');
+                            this.hasHitThisAttack = true; this.addMeter(0.05);
                         }
                     }
                 }
@@ -341,35 +359,24 @@
                 if (this.stateTimer > 0) {
                     this.stateTimer--;
                     if (this.stateTimer === 0) { 
-                        if (this.currentAttack && this.currentAttack.name.includes('竜巻') && !this.isGrounded) {
-                            this.stateTimer = 1; 
+                        if (this.state === 'knockdown') {
+                            this.state = 'idle'; this.invincibleTimer = 20; this.height = this.baseHeight;
                         } else {
-                            if (this.state === 'knockdown') {
-                                this.state = 'idle';
-                                this.invincibleTimer = 20; 
-                                this.height = this.baseHeight;
-                            } else {
-                                this.state = 'idle'; this.currentAttack = null; this.multihitCount = 0;
-                                this.attackBox = { x: 0, y: 0, width: 0, height: 0 };
-                                this.weakChainCount = 0;
-                            }
+                            this.state = 'idle'; this.currentAttack = null; this.multihitCount = 0;
+                            this.attackBox = { x: 0, y: 0, width: 0, height: 0 }; this.weakChainCount = 0;
+                        }
 
-                            if (this.state === 'idle' && this.bufferedInput && (Date.now() - this.bufferedInput.time < 150)) {
-                                let b = this.bufferedInput;
-                                this.bufferedInput = null; 
-                                if (b.type === 'special') {
-                                    if (b.strength === 3) {
-                                        if (this.meter >= 1.0) {
-                                            this.meter -= 1.0;
-                                            let successEX = this.startSpecialAttack(b.moveName, 3);
-                                            if (!successEX) this.meter += 1.0; 
-                                        }
-                                    } else {
-                                        this.startSpecialAttack(b.moveName, b.strength);
-                                    }
-                                } else if (b.type === 'normal') {
-                                    this.startNormalAttack(b.key, b.dir);
-                                }
+                        // 先行入力猶予の拡大（150ms -> 300ms）
+                        if (this.state === 'idle' && this.bufferedInput && (Date.now() - this.bufferedInput.time < 300)) {
+                            let b = this.bufferedInput; this.bufferedInput = null; 
+                            if (b.type === 'special') {
+                                if (b.strength === 3) {
+                                    if (this.meter >= 1.0) { this.meter -= 1.0; let successEX = this.startSpecialAttack(b.moveName, 3); if (!successEX) this.meter += 1.0; }
+                                } else { this.startSpecialAttack(b.moveName, b.strength); }
+                            } else if (b.type === 'normal') {
+                                this.startNormalAttack(b.key, b.dir);
+                            } else if (b.type === 'dash') {
+                                this.startDriveRush();
                             }
                         }
                     }
@@ -378,31 +385,61 @@
                 if (this.comboTimer > 0) {
                     this.comboTimer--;
                     if (this.comboTimer === 0) {
-                        this.comboCount = 0;
-                        this.comboDamage = 0;
-                        document.getElementById(`${id}-combo`).style.opacity = 0;
+                        this.comboCount = 0; this.comboDamage = 0; document.getElementById(`${id}-combo`).style.opacity = 0;
                     }
                 }
             }
 
+            startDriveRush() {
+                if (this.state !== 'idle' || !this.isGrounded || this.isBurnout || this.drive < 1.0) return false;
+                this.updateDrive(-1.0); // 生ラッシュは1ゲージ消費
+                this.state = 'attack'; // 便宜上attack状態として扱う
+                this.stateTimer = 25; // ラッシュ継続時間
+                this.vx = this.facing * 14; // 高速移動
+                this.currentAttack = { name: 'DRIVE RUSH', isDash: true };
+                document.getElementById((this === player1) ? 'p1-status' : 'p2-status').innerText = 'DRIVE RUSH';
+                return true;
+            }
+
+            startCancelDriveRush() {
+                if (this.isBurnout || this.drive < 3.0) return false;
+                this.updateDrive(-3.0); // キャンセルラッシュは3ゲージ消費
+                this.state = 'attack';
+                this.stateTimer = 20;
+                this.hitstopTimer = 0; // ヒットストップをキャンセル
+                this.vx = this.facing * 16;
+                this.currentAttack = { name: 'CANCEL RUSH', isDash: true };
+                document.getElementById((this === player1) ? 'p1-status' : 'p2-status').innerText = 'CANCEL RUSH';
+                return true;
+            }
+
             startNormalAttack(btnType, dirNum) {
                 if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return false;
+                
+                // キャンセルラッシュの判定
+                if (this.state === 'attack' && this.currentAttack && !this.currentAttack.isProjectile && !this.currentAttack.isDash) {
+                    if (this.hasHitThisAttack && this.currentAttack.cancelable) {
+                        // パリィボタン(Space等)または 66 入力
+                        if (btnType === 'dash_macro') {
+                            return this.startCancelDriveRush();
+                        }
+                    }
+                }
 
                 let isPunch = ['j', 'k', 'l'].includes(btnType);
                 let isKick = ['u', 'i', 'o'].includes(btnType);
-                
                 let strengthNum = ['j', 'u'].includes(btnType) ? 0 : (['k', 'i'].includes(btnType) ? 1 : 2); 
                 let strengthName = ['弱', '中', '強'][strengthNum];
                 let typeName = isPunch ? 'P' : 'K';
                 
                 let isCrouching = [1, 2, 3].includes(dirNum) && this.isGrounded;
                 let isJumping = !this.isGrounded;
-                
                 let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
                 let isAirborne = (!this.isGrounded && this.state !== 'idle');
+                let isDR = (this.state === 'attack' && this.currentAttack && this.currentAttack.isDash); // ドライブラッシュからの派生
                 
-                if (this.state !== 'idle' && !isRapid) return false;
-                if (isAirborne) return false;
+                if (this.state !== 'idle' && !isRapid && !isDR) return false;
+                if (isAirborne && !isJumping) return false; // 厳密な空中ジャンプ抑制
 
                 if (isRapid) {
                     if (this.weakChainCount >= 2) return false;
@@ -414,41 +451,43 @@
                 let stanceName = isJumping ? 'ジャンプ' : (isCrouching ? 'しゃがみ' : '立ち');
                 let name = `${stanceName}${strengthName}${typeName}`;
                 let type = isCrouching ? (isKick ? 'low' : 'high') : (isJumping ? 'overhead' : 'high');
-                
-                let isOverhead = !isJumping && !isCrouching && isPunch && strengthNum === 1 && (this.facing === 1 ? dirNum === 6 : dirNum === 4);
+                let isOverhead = !isJumping && !isCrouching && isPunch && strengthNum === 1 && dirNum === 6; // dirNumは絶対方向ではなく相対方向に修正済み
                 if (isOverhead) { name = '鎖骨割り'; type = 'overhead'; }
 
                 let isSweep = isCrouching && isKick && strengthNum === 2;
                 if (isSweep) { name = '足払い(屈強K)'; }
 
-                this.state = 'attack'; this.hasHitThisAttack = false;
+                this.state = 'attack';
+                this.hasHitThisAttack = false;
                 
-                /* 【バグ修正2】通常技全体の有利フレーム過多を抑えるため、ヒット・ガード硬直（hStun / gStun）を減少調整 */
+                // DR中は少し滑る
+                if (isDR) { this.vx = this.facing * 4; } else { this.vx = 0; }
+
+                // 全体的な硬直を減らし、キャンセルを前提とするバランスに調整
                 let dmg, startup, active, rec, hStun, gStun;
                 if (strengthNum === 0) {
-                    dmg = 3; startup = 4; active = 3; rec = 8; hStun = 4; gStun = 8;
+                    dmg = 3; startup = 4; active = 3; rec = 6; hStun = 9; gStun = 6;
                 } else if (strengthNum === 1) {
-                    dmg = 5; startup = 7; active = 4; rec = 8; hStun = 6; gStun = 7;
+                    dmg = 5; startup = 6; active = 4; rec = 10; hStun = 13; gStun = 9;
                 } else {
-                    dmg = 10; startup = 11; active = 5; rec = 9; hStun = 10; gStun = 6;
+                    dmg = 10; startup = 9; active = 5; rec = 16; hStun = 18; gStun = 12;
                 }
+
+                // DR中は有利フレーム増加 (+4F)
+                if (isDR) { hStun += 4; gStun += 4; }
                 
                 this.currentAttack = { 
-                    name: name, damage: dmg, 
+                    name: name + (isDR ? " (DR)" : ""), damage: dmg, 
                     width: 100 + (strengthNum * 30), height: isJumping ? 60 : 40, 
                     offsetX: 50 + (strengthNum * 15), offsetY: isCrouching ? 120 : (isJumping ? 150 : 50), 
                     rec: rec, active: active, hitStun: hStun, guardStun: gStun, hitType: type,
-                    cancelable: true, 
-                    rapidCancelable: (strengthNum === 0), 
-                    knockdown: isSweep,
-                    launch: false 
+                    cancelable: true, rapidCancelable: (strengthNum === 0), knockdown: isSweep, launch: false 
                 };
-                
                 this.stateTimer = startup + active + rec;
                 this.updateAttackBox();
                 
                 const id = (this === player1) ? 'p1-status' : 'p2-status';
-                document.getElementById(id).innerText = name;
+                document.getElementById(id).innerText = this.currentAttack.name;
 
                 if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'normal', btnType, dirNum });
@@ -461,32 +500,23 @@
                 if (this.state !== 'idle' || !this.isGrounded) return false;
                 let target = (this === player1) ? player2 : player1;
                 let dist = Math.abs((this.x + this.width/2) - (target.x + target.width/2));
-                
                 if (dist < 140 && target.isGrounded && target.state !== 'hitstun' && !target.invincible && target.state !== 'knockdown' && target.state !== 'air_hit') {
                     this.state = 'attack'; this.stateTimer = 30; this.vx = 0;
                     const id = (this === player1) ? 'p1-status' : 'p2-status';
                     document.getElementById(id).innerText = '背負い投げ!';
-                    
                     target.state = 'knockdown'; target.stateTimer = 40;
-                    target.hp = Math.max(0, target.hp - 12); 
-                    target.comboCount = 1;
-                    target.comboDamage = 12;
-                    target.comboTimer = 90;
+                    target.hp = Math.max(0, target.hp - 12); target.comboCount = 1; target.comboDamage = 12; target.comboTimer = 90;
                     target.x += this.facing * 180; target.vy = -8; target.vx = 0;
-                    
                     const targetId = (target === player1) ? 'p1' : 'p2';
                     document.getElementById(`${targetId}-hp`).style.width = target.hp + '%';
                     
                     const comboEl = document.getElementById(`${targetId}-combo`);
-                    comboEl.innerText = `1 HIT! (${target.comboDamage} DMG)`;
-                    comboEl.style.opacity = 1;
+                    comboEl.innerText = `1 HIT! (${target.comboDamage} DMG)`; comboEl.style.opacity = 1;
 
                     displayFrameAdvantage(this, target, 10);
-
                     if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                         socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'throw' });
                     }
-
                     return true;
                 }
                 return false;
@@ -494,47 +524,47 @@
 
             startSpecialAttack(moveName, strength) {
                 if (this.state === 'hitstun' || this.state === 'guardstun' || this.state === 'knockdown' || this.state === 'air_hit') return false;
-                
                 let isShoryuToEXCancel = this.currentAttack && this.currentAttack.name.includes('昇龍拳') && !this.currentAttack.name.includes('EX') && strength === 3 && (this.hitstopTimer > 0 || this.shoryuCancelWindow > 0);
-
+                
                 if (this.state === 'attack' && !isShoryuToEXCancel) {
-                    if (this.currentAttack && !this.currentAttack.isProjectile) {
-                        let isStartup = this.stateTimer > (this.currentAttack.active + this.currentAttack.rec); 
+                    if (this.currentAttack && !this.currentAttack.isProjectile && !this.currentAttack.isDash) {
+                        let isStartup = this.stateTimer > (this.currentAttack.active + this.currentAttack.rec);
                         let canHitCancel = this.hasHitThisAttack && this.currentAttack.cancelable;
-                        
                         if (!isStartup && !canHitCancel) return false; 
+                    } else if (this.currentAttack && this.currentAttack.isDash) {
+                        // DR中からの必殺技は許可
                     } else { return false; }
                 }
 
+                // SF6風EX（OD）技はドライブゲージ2本消費
                 if (strength === 3) {
+                    if (this.drive < 2.0 && !this.isBurnout) return false; // バーンアウト中はEX不可
+                    if (!this.isBurnout) this.updateDrive(-2.0);
+
                     this.state = 'attack'; this.vx = 0;
                     let exName = '';
-                    if (moveName === 'hadouken') exName = '真空波動拳(1G)';
-                    if (moveName === 'shoryuken') exName = 'EX昇龍拳(1G)';
-                    if (moveName === 'tatsumaki') exName = '真空竜巻旋風脚(1G)';
-                    
+                    if (moveName === 'hadouken') exName = '真空波動拳(OD)';
+                    if (moveName === 'shoryuken') exName = 'EX昇龍拳(OD)';
+                    if (moveName === 'tatsumaki') exName = '真空竜巻旋風脚(OD)';
                     this.currentAttack = { name: exName, rawMoveName: moveName }; 
                     
-                    cutInTimer = CUTIN_DURATION;
-                    cutInAttacker = this;
-
+                    cutInTimer = CUTIN_DURATION; cutInAttacker = this;
                     if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                         socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
                     }
                     return true;
                 }
 
-                this.hitstopTimer = 0;
-                this.shoryuCancelWindow = 0; 
+                this.hitstopTimer = 0; this.shoryuCancelWindow = 0; 
                 this.state = 'attack'; this.hasHitThisAttack = false; this.vx = 0;
                 const statusId = (this === player1) ? 'p1-status' : 'p2-status';
 
                 if (moveName === 'hadouken') {
                     this.currentAttack = { 
                         name: ['弱 波動拳','中 波動拳','強 波動拳'][strength], 
-                        isProjectile: true, damage: 8, hitStun: 15, guardStun: 10, knockdown: false, launch: false
+                        isProjectile: true, damage: 8, hitStun: 15, guardStun: -3, knockdown: false, launch: false
                     };
-                    this.stateTimer = 42; 
+                    this.stateTimer = 42;
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
                     projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this, false, strength));
                     document.getElementById(statusId).innerText = this.currentAttack.name;
@@ -542,58 +572,62 @@
                 else if (moveName === 'shoryuken') {
                     let jumpHeight = -16 - strength * 2;
                     this.vy = jumpHeight; this.invincibleTimer = 8; 
-                    
                     this.currentAttack = { 
                         name: ['弱 昇龍拳','中 昇龍拳','強 昇龍拳'][strength], 
                         damage: 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, 
-                        rec: 30, hitStun: 35, guardStun: 10, knockdown: true, launch: true 
+                        rec: 30, hitStun: 35, guardStun: -20, knockdown: true, launch: true 
                     };
-                    this.stateTimer = 60; 
-                    this.vx = this.facing * (2 + strength);
+                    this.stateTimer = 60; this.vx = this.facing * (2 + strength);
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 } 
                 else if (moveName === 'tatsumaki') {
                     this.currentAttack = { 
                         name: ['弱 竜巻旋風脚','中 竜巻旋風脚','強 竜巻旋風脚'][strength], 
                         damage: 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, 
-                        rec: 6, hitStun: 26, guardStun: 15, knockdown: true, launch: true 
+                        rec: 10, hitStun: 26, guardStun: -8, knockdown: true, launch: true 
                     };
-                    this.stateTimer = 20 + strength * 4;
-                    this.vy = -6; 
-                    this.tatsuSpeed = this.facing * (6 + strength); 
+                    this.stateTimer = 30 + strength * 4; // 時間を少し長めに設定し、自然着地を待つ
+                    this.vy = -6; this.tatsuSpeed = this.facing * (6 + strength); 
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 }
                 this.updateAttackBox();
-
                 if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
                 }
-
                 return true;
             }
 
             evaluateHit(attack, hitType) {
-                if (this.invincible && this.state !== 'air_hit') return; 
-
+                if (this.invincible && this.state !== 'air_hit') return;
+                
                 let isGuarded = false; let isParried = false;
+                let attacker = (this === player1) ? player2 : player1;
+                
+                // ガード方向の相対判定（自分が右向き(1)なら左(4)、左向き(-1)なら右(6)が後退＝ガード）
+                let isHoldingBack = false;
+                if (this === player1) {
+                    if ((this.facing === 1 && activeMoveKey === 'a') || (this.facing === -1 && activeMoveKey === 'd')) isHoldingBack = true;
+                } else if (this === player2 && isOnlineMode) {
+                    if ((this.facing === 1 && player2MoveKey === 'a') || (this.facing === -1 && player2MoveKey === 'd')) isHoldingBack = true;
+                }
+
                 if (this === player2 && !isOnlineMode) {
                     if (this.cpuGuardType === 'x') isParried = true;
-                    else if (this.cpuGuardType === 'a' && hitType !== 'low') isGuarded = true;
-                    else if (this.cpuGuardType === 'z' && hitType !== 'overhead') isGuarded = true;
+                    else if (this.cpuGuardType === 'guard' && hitType !== 'low') isGuarded = true;
+                    else if (this.cpuGuardType === 'crouch_guard' && hitType !== 'overhead') isGuarded = true;
                 } else {
                     if (this === player1) {
-                        if (activeMoveKey === 'x') isParried = true;
-                        else if (activeMoveKey === 'a' && hitType !== 'low') isGuarded = true;
-                        else if (activeMoveKey === 'z' && hitType !== 'overhead') isGuarded = true;
+                        if (activeMoveKey === 'x' && !this.isBurnout) isParried = true;
+                        else if (isHoldingBack && !this.isCrouching && hitType !== 'low') isGuarded = true;
+                        else if (isHoldingBack && this.isCrouching && hitType !== 'overhead') isGuarded = true;
                     } else if (this === player2 && isOnlineMode) {
-                        if (player2MoveKey === 'x') isParried = true;
-                        else if (player2MoveKey === 'a' && hitType !== 'low') isGuarded = true;
-                        else if (player2MoveKey === 'z' && hitType !== 'overhead') isGuarded = true;
+                        if (player2MoveKey === 'x' && !this.isBurnout) isParried = true;
+                        else if (isHoldingBack && !this.isCrouching && hitType !== 'low') isGuarded = true;
+                        else if (isHoldingBack && this.isCrouching && hitType !== 'overhead') isGuarded = true;
                     }
                 }
 
                 const statusId = (this === player1) ? 'p1-status' : 'p2-status';
-                let attacker = (this === player1) ? player2 : player1;
 
                 let stopFrames = 8;
                 if (attack.name && attack.name.includes('弱')) stopFrames = 5;
@@ -601,40 +635,41 @@
                 if (attack.name && (attack.name.includes('昇龍') || attack.name.includes('竜巻'))) stopFrames = 12;
                 if (attack.isProjectile) stopFrames = 4;
 
-                this.hitstopTimer = stopFrames;
-                attacker.hitstopTimer = stopFrames;
-
-                if (attack.name && attack.name.includes('昇龍拳') && !attack.name.includes('EX')) {
+                this.hitstopTimer = stopFrames; attacker.hitstopTimer = stopFrames;
+                if (attack.name && attack.name.includes('昇龍拳') && !attack.name.includes('OD')) {
                     attacker.shoryuCancelWindow = 30;
                 }
 
                 if (isParried) {
                     document.getElementById(statusId).innerText = 'JUST PARRIED!';
-                    this.x -= this.facing * 5; this.addMeter(0.15);
+                    this.x -= this.facing * 5; this.addMeter(0.15); this.updateDrive(0.5);
                     displayFrameAdvantage(attacker, this, -15); 
                     return;
                 }
 
                 if (isGuarded) {
                     let finalGuardStun = attack.guardStun;
-                    if (this.isGuardCrushed) {
-                        document.getElementById(statusId).innerText = 'CRUSH GUARD!';
-                        this.hp = Math.max(0, this.hp - Math.floor(attack.damage * 0.4)); 
-                        finalGuardStun = Math.floor(attack.guardStun * 1.5);
+                    
+                    if (this.isBurnout) {
+                        document.getElementById(statusId).innerText = 'CHIP DAMAGE!';
+                        this.hp = Math.max(0, this.hp - Math.floor(attack.damage * 0.25)); // 削りダメージ
+                        finalGuardStun += 4; // バーンアウト中はガード硬直+4F
+                        const hpId = (this === player1) ? 'p1-hp' : 'p2-hp';
+                        document.getElementById(hpId).style.width = this.hp + '%';
                     } else {
                         document.getElementById(statusId).innerText = 'GUARD!';
-                        this.updateGuardShield(-15); 
+                        this.updateDrive(-0.5); // ガードでドライブ消費
                     }
 
                     this.state = 'guardstun'; this.stateTimer = finalGuardStun;
                     
                     let pushDist = 12;
-                    if (attack.name && attack.name.includes('弱')) { pushDist = 38; } 
-                    else if (attack.name && attack.name.includes('中')) { pushDist = 22; } 
-                    else if (attack.name && attack.name.includes('強')) { pushDist = 30; }
+                    if (attack.name && attack.name.includes('弱')) { pushDist = 20; } 
+                    else if (attack.name && attack.name.includes('中')) { pushDist = 30; } 
+                    else if (attack.name && attack.name.includes('強')) { pushDist = 40; }
 
                     if (this.x <= 0 || this.x + this.width >= canvas.width) {
-                        attacker.x -= attacker.facing * pushDist; 
+                        attacker.x -= attacker.facing * pushDist;
                     } else {
                         this.x -= this.facing * pushDist;
                     }
@@ -650,21 +685,18 @@
                 document.getElementById(hpId).style.width = this.hp + '%';
                 this.addMeter(0.08); 
 
-                this.comboCount++; 
-                this.comboDamage += attack.damage;
-                this.comboTimer = attack.hitStun + 50;
+                this.comboCount++; this.comboDamage += attack.damage; this.comboTimer = attack.hitStun + 50;
                 
                 const comboId = (this === player1) ? 'p1-combo' : 'p2-combo';
                 const comboEl = document.getElementById(comboId);
                 if (this.comboCount > 0) { 
-                    comboEl.innerText = `${this.comboCount} HIT! (${this.comboDamage} DMG)`; 
-                    comboEl.style.opacity = 1; 
+                    comboEl.innerText = `${this.comboCount} HIT!\n(${this.comboDamage} DMG)`; comboEl.style.opacity = 1; 
                 }
 
                 let hitPushDist = 16;
-                if (attack.name && attack.name.includes('弱')) { hitPushDist = 38; } 
-                else if (attack.name && attack.name.includes('中')) { hitPushDist = 22; } 
-                else if (attack.name && attack.name.includes('強')) { hitPushDist = 30; }
+                if (attack.name && attack.name.includes('弱')) { hitPushDist = 20; } 
+                else if (attack.name && attack.name.includes('中')) { hitPushDist = 30; } 
+                else if (attack.name && attack.name.includes('強')) { hitPushDist = 40; }
 
                 if (this.x <= 0 || this.x + this.width >= canvas.width) {
                     attacker.x -= attacker.facing * hitPushDist;
@@ -675,16 +707,10 @@
                 if (attack.knockdown) {
                     if (attack.launch) {
                         document.getElementById(statusId).innerText = 'LAUNCH!';
-                        this.state = 'air_hit';
-                        this.vy = -15; 
-                        this.vx = -this.facing * 2; 
-                        this.stateTimer = 999; 
+                        this.state = 'air_hit'; this.vy = -15; this.vx = -this.facing * 2; this.stateTimer = 999;
                     } else {
                         document.getElementById(statusId).innerText = 'KNOCKDOWN!';
-                        this.state = 'knockdown';
-                        this.stateTimer = 50;
-                        this.vy = -6;
-                        this.vx = -this.facing * 5;
+                        this.state = 'knockdown'; this.stateTimer = 50; this.vy = -6; this.vx = -this.facing * 5;
                     }
                     this.multihitCount = 0;
                 } else {
@@ -698,53 +724,33 @@
         }
 
         function executeSpecialAfterCutIn(fighter) {
-            fighter.hitstopTimer = 0;
-            fighter.shoryuCancelWindow = 0;
-            fighter.hasHitThisAttack = false;
+            fighter.hitstopTimer = 0; fighter.shoryuCancelWindow = 0; fighter.hasHitThisAttack = false;
             let moveName = fighter.currentAttack.rawMoveName;
             const statusId = (fighter === player1) ? 'p1-status' : 'p2-status';
-
             if (moveName === 'hadouken') {
-                fighter.currentAttack = { 
-                    name: '真空波動拳(1G)', isProjectile: true, damage: 18, hitStun: 40, guardStun: 24, knockdown: true, launch: true
-                };
+                fighter.currentAttack = { name: '真空波動拳(OD)', isProjectile: true, damage: 18, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
                 fighter.stateTimer = 45; 
                 let spawnX = fighter.facing === 1 ? fighter.x + fighter.width + 10 : fighter.x - 80;
                 projectiles.push(new Fireball(spawnX, fighter.y + 30, fighter.facing, fighter, true, 3));
             } 
             else if (moveName === 'shoryuken') {
                 fighter.vy = -22; fighter.invincibleTimer = 8; 
-                fighter.currentAttack = { 
-                    name: 'EX昇龍拳(1G)', damage: 11, width: 120, height: 200, offsetX: 50, offsetY: -50, 
-                    rec: 30, hitStun: 35, guardStun: 10, knockdown: true, launch: true 
-                };
-                fighter.stateTimer = 50; 
-                fighter.vx = fighter.facing * 4;
-                fighter.multihitCount = 2; fighter.multihitTimer = 5;
+                fighter.currentAttack = { name: 'EX昇龍拳(OD)', damage: 11, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
+                fighter.stateTimer = 50; fighter.vx = fighter.facing * 4; fighter.multihitCount = 2; fighter.multihitTimer = 5;
             } 
             else if (moveName === 'tatsumaki') {
-                fighter.currentAttack = { 
-                    name: '真空竜巻旋風脚(1G)', damage: 7, width: 150, height: 80, offsetX: -20, offsetY: 40, 
-                    rec: 6, hitStun: 26, guardStun: 15, knockdown: true, launch: true 
-                };
-                fighter.stateTimer = 50; fighter.vy = -6; 
-                fighter.tatsuSpeed = fighter.facing * 9; 
-                fighter.multihitCount = 4; fighter.multihitTimer = 10;
+                fighter.currentAttack = { name: '真空竜巻旋風脚(OD)', damage: 7, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
+                fighter.stateTimer = 50; fighter.vy = -6; fighter.tatsuSpeed = fighter.facing * 9; fighter.multihitCount = 4; fighter.multihitTimer = 10;
             }
             document.getElementById(statusId).innerText = fighter.currentAttack.name;
             fighter.updateAttackBox();
         }
 
         function displayFrameAdvantage(attacker, defender, diff) {
-            const p1El = document.getElementById('p1-frame');
-            const p2El = document.getElementById('p2-frame');
-            
-            let isP1Attacker = (attacker === player1);
-            let targetDiff = isP1Attacker ? diff : -diff;
-
+            const p1El = document.getElementById('p1-frame'); const p2El = document.getElementById('p2-frame');
+            let isP1Attacker = (attacker === player1); let targetDiff = isP1Attacker ? diff : -diff;
             if (targetDiff === 0) {
-                p1El.innerText = '±0F (五分)'; p2El.innerText = '±0F (五分)';
-                p1El.style.color = p2El.style.color = '#fff';
+                p1El.innerText = '±0F (五分)'; p2El.innerText = '±0F (五分)'; p1El.style.color = p2El.style.color = '#fff';
             } else if (targetDiff > 0) {
                 p1El.innerText = `+${targetDiff}F 有利`; p1El.style.color = '#00ff00';
                 p2El.innerText = `-${targetDiff}F 不利`; p2El.style.color = '#ff3333';
@@ -754,24 +760,60 @@
             }
         }
 
-        let player1; let player2; let projectiles = [];
-        let matchTimer = 99; let matchTimerInterval;
+        let player1; let player2;
+        let projectiles = []; let matchTimer = 99; let matchTimerInterval;
+        let activeMoveKey = null; const moveKeyStack = []; let player2MoveKey = null; 
 
-        let activeMoveKey = null; const moveKeyStack = [];
-        let player2MoveKey = null; 
-
-        function getJoystickDirection() {
-            switch (activeMoveKey) {
-                case 'z': return 1; case 'x': return 2; case 'c': return 3;
-                case 'a': return 4; case 'd': return 6;
-                case 'q': return 7; case 'w': return 8; case 'e': return 9;
-                default:  return 5;
-            }
+        // テンキー表記の相対取得 (1P/2Pのfacingに基づいて前/後を判断)
+        function getJoystickDirection(fighter) {
+            let key = activeMoveKey;
+            if (fighter === player2 && isOnlineMode) key = player2MoveKey;
+            
+            // W,S,A,D 等の絶対キーから相対テンキーへ変換
+            let isFacingRight = (fighter.facing === 1);
+            let dir = 5;
+            
+            if (key === 'a') dir = isFacingRight ? 4 : 6;
+            else if (key === 'd') dir = isFacingRight ? 6 : 4;
+            else if (key === 'w') dir = 8;
+            else if (key === 'x') dir = 2; // 下として代用されてた？元の実装に合わせる
+            else if (key === 'z') dir = isFacingRight ? 1 : 3;
+            else if (key === 'c') dir = isFacingRight ? 3 : 1;
+            else if (key === 'q') dir = isFacingRight ? 7 : 9;
+            else if (key === 'e') dir = isFacingRight ? 9 : 7;
+            
+            return dir;
         }
+
         let inputBuffer = [];
         function checkCollision(rect1, rect2) {
             return (rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x &&
                     rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y);
+        }
+
+        // キャラクター同士の衝突押し出し処理 (Pushbox)
+        function resolveCollisions() {
+            if (player1.state === 'knockdown' || player2.state === 'knockdown') return;
+            if (player1.state === 'air_hit' || player2.state === 'air_hit') return;
+
+            let p1Center = player1.x + player1.width / 2;
+            let p2Center = player2.x + player2.width / 2;
+            let dist = Math.abs(p1Center - p2Center);
+            
+            // キャラクターの幅(100)より近づいたら押し出し
+            if (dist < player1.width) {
+                let overlap = (player1.width - dist) / 2;
+                if (p1Center < p2Center) {
+                    player1.x -= overlap; player2.x += overlap;
+                } else {
+                    player1.x += overlap; player2.x -= overlap;
+                }
+                // 画面端の考慮
+                if (player1.x < 0) { player1.x = 0; player2.x += overlap*2; }
+                if (player2.x > canvas.width - player2.width) { player2.x = canvas.width - player2.width; player1.x -= overlap*2; }
+                if (player2.x < 0) { player2.x = 0; player1.x += overlap*2; }
+                if (player1.x > canvas.width - player1.width) { player1.x = canvas.width - player1.width; player2.x -= overlap*2; }
+            }
         }
 
         let cpuTimer = 0;
@@ -782,63 +824,63 @@
             player2.cpuGuardType = null;
 
             if (selectModeIndex === 0) {
+                // CPU MATCH
                 if (player2.state === 'idle') {
                     if (player1.state === 'attack' && dist < 260) {
-                        player2.cpuGuardType = Math.random() < 0.12 ? 'x' : (Math.random() < 0.5 ? 'z' : 'a');
+                        player2.cpuGuardType = Math.random() < 0.12 ? 'x' : (Math.random() < 0.5 ? 'crouch_guard' : 'guard');
                         player2.vx = 0; return;
                     }
                     if (dist > 180) player2.vx = player2.facing * 3.5;
                     else if (dist < 90) {
                         if (Math.random() < 0.15) { if (player2.tryThrow()) return; }
                         player2.vx = -player2.facing * 2.5;
-                    }
-                    else player2.vx = 0;
-
+                    } else player2.vx = 0;
                     cpuTimer--;
                     if (cpuTimer <= 0) {
                         cpuTimer = 40 + Math.random() * 40;
                         if (dist < 160) {
-                            if (player2.meter >= 2.0 && Math.random() < 0.4) { player2.meter -= 2.0; player2.startSpecialAttack('shoryuken', 3); 
-                            } else { player2.startSpecialAttack('shoryuken', Math.floor(Math.random()*3)); }
+                            if (player2.drive >= 2.0 && Math.random() < 0.4) { player2.startSpecialAttack('shoryuken', 3); } 
+                            else { player2.startSpecialAttack('shoryuken', Math.floor(Math.random()*3)); }
                         } else {
-                            if (player2.meter >= 1.0 && Math.random() < 0.3) { player2.meter -= 1.0; player2.startSpecialAttack('hadouken', 3);
-                            } else { player2.startSpecialAttack('hadouken', Math.floor(Math.random()*3)); }
+                            if (player2.drive >= 2.0 && Math.random() < 0.3) { player2.startSpecialAttack('hadouken', 3); } 
+                            else { player2.startSpecialAttack('hadouken', Math.floor(Math.random()*3)); }
                         }
                     }
                 }
             } 
             else {
-                player2.vx = 0; 
-                if (player1.state === 'attack' && dist < 350) {
-                    if (dummyStateSetting === 2) {
-                        player2.cpuGuardType = (player1.currentAttack && player1.currentAttack.hitType === 'low') ? 'z' : 'a';
-                    } else if (dummyStateSetting === 3) {
-                        player2.cpuGuardType = 'x'; 
+                // TRAINING MODE
+                player2.vx = 0;
+                
+                let shouldGuard = false;
+                if (dummyStateSetting === 2) { // 常時ガード
+                    shouldGuard = true;
+                } else if (dummyStateSetting === 3) { // 途中からガード (コンボ中のみガード)
+                    if (player2.comboCount > 0 || player1.hasHitThisAttack || player2.state === 'hitstun' || player2.state === 'guardstun') {
+                        shouldGuard = true;
                     }
+                } else if (dummyStateSetting === 4) { // ジャストパリィ
+                    if (player1.state === 'attack' && dist < 350) player2.cpuGuardType = 'x';
+                }
+
+                if (shouldGuard && player1.state === 'attack' && dist < 350) {
+                    player2.cpuGuardType = (player1.currentAttack && player1.currentAttack.hitType === 'low') ? 'crouch_guard' : 'guard';
                 }
             }
         }
 
         function startBattle() {
-            gameMode = 'BATTLE';
-            document.getElementById('game-ui').style.display = 'flex';
-            
+            gameMode = 'BATTLE'; document.getElementById('game-ui').style.display = 'flex';
             if (selectModeIndex === 1) {
-                document.getElementById('training-panel').style.display = 'block';
-                document.getElementById('timer').innerText = '∞';
+                document.getElementById('training-panel').style.display = 'block'; document.getElementById('timer').innerText = '∞';
             } else {
-                document.getElementById('training-panel').style.display = 'none';
-                matchTimer = 99; document.getElementById('timer').innerText = matchTimer;
+                document.getElementById('training-panel').style.display = 'none'; matchTimer = 99; document.getElementById('timer').innerText = matchTimer;
             }
-            
             player1 = new Fighter({ x: 250, y: 0, color: CHAR_COLORS[selectIndex], isCPU: false, name: CHAR_NAMES[selectIndex] });
             let cpuColorIndex = (selectIndex + 1) % CHAR_COLORS.length;
-            
             player2 = new Fighter({ x: 900, y: 0, color: CHAR_COLORS[cpuColorIndex], isCPU: isOnlineMode ? false : true, name: CHAR_NAMES[cpuColorIndex] });
-            
             document.getElementById('p1-name').innerText = player1.name + (isOnlineMode && myPlayerType === 'p1' ? ' (YOU)' : '');
             document.getElementById('p2-name').innerText = player2.name + (isOnlineMode ? (myPlayerType === 'p2' ? ' (YOU)' : ' (NET)') : (selectModeIndex === 1 ? ' (DUMMY)' : ' (CPU)'));
-            
             clearInterval(matchTimerInterval);
             if (selectModeIndex === 0 && !isOnlineMode) {
                 matchTimerInterval = setInterval(() => {
@@ -851,146 +893,108 @@
         }
 
         function animate() {
-            window.requestAnimationFrame(animate);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            window.requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (cutInTimer > 0) {
-                cutInTimer--;
-                ctx.fillStyle = 'rgba(10, 10, 15, 0.85)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = cutInAttacker.color;
-                let bandY = canvas.height / 2 - 80;
-                ctx.fillRect(0, bandY, canvas.width, 160);
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, bandY, canvas.width, 4);
-                ctx.fillRect(0, bandY + 160, canvas.width, 4);
-                ctx.fillStyle = '#ffffff';
-                
-                /* 【バグ修正3】日本語フォントを確実に読み込ませるため 'Arial Black', sans-serif を指定 */
-                ctx.font = 'italic bold 64px "Arial Black", sans-serif';
-                ctx.textAlign = 'center';
+                cutInTimer--; ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = cutInAttacker.color; let bandY = canvas.height / 2 - 80;
+                ctx.fillRect(0, bandY, canvas.width, 160); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, bandY, canvas.width, 4); ctx.fillRect(0, bandY + 160, canvas.width, 4);
+                ctx.fillStyle = '#ffffff'; ctx.font = 'italic bold 64px "Arial Black", sans-serif'; ctx.textAlign = 'center';
                 let textX = canvas.width / 2;
-                if (cutInTimer > CUTIN_DURATION - 10) {
-                    textX = (canvas.width / 2) + (cutInTimer - (CUTIN_DURATION - 10)) * 60 * cutInAttacker.facing;
-                }
+                if (cutInTimer > CUTIN_DURATION - 10) textX = (canvas.width / 2) + (cutInTimer - (CUTIN_DURATION - 10)) * 60 * cutInAttacker.facing;
                 ctx.fillText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 22);
-                if (cutInTimer === 0) { executeSpecialAfterCutIn(cutInAttacker); }
-                return; 
+                if (cutInTimer === 0) { executeSpecialAfterCutIn(cutInAttacker); } return;
             }
 
-            ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#444'; ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
+            ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#444'; ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
 
             if (gameMode === 'TITLE') {
-                ctx.fillStyle = '#ffcc00'; ctx.font = '68px Impact'; ctx.textAlign = 'center';
-                ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 200);
-                
+                ctx.fillStyle = '#ffcc00'; ctx.font = '68px Impact'; ctx.textAlign = 'center'; ctx.fillText('SUPER FIGHTING FIGHTER', canvas.width / 2, 200);
                 const modes = ['1. CPU MATCH (ARCADE)', '2. TRAINING MODE', '3. ONLINE ROOM MATCH'];
                 for(let i=0; i<3; i++) {
-                    ctx.fillStyle = (selectModeIndex === i) ? '#00ffff' : '#888';
-                    ctx.font = (selectModeIndex === i) ? '36px Arial Black' : '30px Arial';
+                    ctx.fillStyle = (selectModeIndex === i) ? '#00ffff' : '#888'; ctx.font = (selectModeIndex === i) ? '36px Arial Black' : '30px Arial';
                     ctx.fillText((selectModeIndex === i ? '➔ ' : '') + modes[i], canvas.width / 2, 340 + i * 70);
                 }
-                
-                ctx.fillStyle = '#ffcc00'; ctx.font = '20px Arial';
-                ctx.fillText('W / S: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 580);
-                return;
+                ctx.fillStyle = '#ffcc00'; ctx.font = '20px Arial'; ctx.fillText('W / S: SELECT  |  SPACE: CONFIRM', canvas.width / 2, 580); return;
             }
 
             if (gameMode === 'CHAR_SELECT') {
-                ctx.fillStyle = '#ffffff'; ctx.font = '42px Impact'; ctx.textAlign = 'center';
-                ctx.fillText('SELECT YOUR CHARACTER', canvas.width / 2, 120);
-
+                ctx.fillStyle = '#ffffff'; ctx.font = '42px Impact'; ctx.textAlign = 'center'; ctx.fillText('SELECT YOUR CHARACTER', canvas.width / 2, 120);
                 for (let i = 0; i < 3; i++) {
                     let boxX = 280 + i * 260; let boxY = 280;
-                    ctx.strokeStyle = (selectIndex === i) ? '#ffcc00' : '#555';
-                    ctx.lineWidth = (selectIndex === i) ? 6 : 2;
-                    ctx.strokeRect(boxX, boxY, 200, 200);
+                    ctx.strokeStyle = (selectIndex === i) ? '#ffcc00' : '#555'; ctx.lineWidth = (selectIndex === i) ? 6 : 2; ctx.strokeRect(boxX, boxY, 200, 200);
                     ctx.fillStyle = CHAR_COLORS[i]; ctx.fillRect(boxX + 10, boxY + 10, 180, 180);
-                    ctx.fillStyle = '#fff'; ctx.font = '20px Arial';
-                    ctx.fillText(CHAR_NAMES[i], boxX + 100, boxY + 230);
+                    ctx.fillStyle = '#fff'; ctx.font = '20px Arial'; ctx.fillText(CHAR_NAMES[i], boxX + 100, boxY + 230);
                 }
-                ctx.fillStyle = '#ffcc00'; ctx.font = '22px Arial';
-                ctx.fillText('A or D: MOVE  /  SPACE: CONFIRM', canvas.width / 2, 600);
-                return;
+                ctx.fillStyle = '#ffcc00'; ctx.font = '22px Arial'; ctx.fillText('A or D: MOVE  /  SPACE: CONFIRM', canvas.width / 2, 600); return;
             }
 
             if (gameMode === 'GAME_OVER') {
                 ctx.fillStyle = '#ff3333'; ctx.font = '72px Impact'; ctx.textAlign = 'center';
                 let msg = 'GAME OVER';
-                if (player1.hp <= 0 && player2.hp <= 0) msg = 'DRAW';
-                else if (player1.hp <= 0) msg = 'P2 WIN';
-                else if (player2.hp <= 0) msg = 'P1 WIN';
-                ctx.fillText(msg, canvas.width / 2, 300);
-                ctx.fillStyle = '#fff'; ctx.font = '24px Arial';
-                ctx.fillText('PRESS SPACE TO RETURN TO TITLE', canvas.width / 2, 440);
+                if (player1.hp <= 0 && player2.hp <= 0) msg = 'DRAW'; else if (player1.hp <= 0) msg = 'P2 WIN'; else if (player2.hp <= 0) msg = 'P1 WIN';
+                ctx.fillText(msg, canvas.width / 2, 300); ctx.fillStyle = '#fff'; ctx.font = '24px Arial'; ctx.fillText('PRESS SPACE TO RETURN TO TITLE', canvas.width / 2, 440);
             }
 
+            // TRAINING MODE 回復処理
             if (selectModeIndex === 1 && gameMode === 'BATTLE') {
                 const p1GettingHit = player1.state === 'hitstun' || player1.state === 'knockdown' || player1.state === 'air_hit' || player1.comboTimer > 0;
-                if (!p1GettingHit && player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
-                
+                if (!p1GettingHit) { 
+                    if (player1.hp < 100) { player1.hp = 100; document.getElementById('p1-hp').style.width = '100%'; }
+                    if (player1.drive < 6.0) player1.updateDrive(6.0);
+                }
                 const p2GettingHit = player2.state === 'hitstun' || player2.state === 'knockdown' || player2.state === 'air_hit' || player2.comboTimer > 0;
-                if (!p2GettingHit && player2.hp < 100) { player2.hp = 100; document.getElementById('p2-hp').style.width = '100%'; }
-                
-                if (player1.meter < 3.0) { player1.addMeter(0.1); }
-                if (player2.meter < 3.0) { player2.addMeter(0.1); }
+                if (!p2GettingHit) {
+                    if (player2.hp < 100) { player2.hp = 100; document.getElementById('p2-hp').style.width = '100%'; }
+                    if (player2.drive < 6.0) player2.updateDrive(6.0);
+                }
+                if (player1.meter < 3.0) player1.addMeter(0.1);
+                if (player2.meter < 3.0) player2.addMeter(0.1);
             }
 
             let p1Dir = 5;
             if (isOnlineMode) {
                 if (myPlayerType === 'p1') {
-                    p1Dir = getJoystickDirection();
-                    socket.emit('playerUpdate', {
-                        roomId: currentRoomId, playerType: 'p1',
-                        x: player1.x, y: player1.y, vx: player1.vx, vy: player1.vy,
-                        state: player1.state, hp: player1.hp, facing: player1.facing,
-                        isCrouching: player1.isCrouching, height: player1.height, activeMoveKey: activeMoveKey
-                    });
-                } else {
-                    p1Dir = 5;
-                }
+                    p1Dir = getJoystickDirection(player1);
+                    socket.emit('playerUpdate', { roomId: currentRoomId, playerType: 'p1', x: player1.x, y: player1.y, vx: player1.vx, vy: player1.vy, state: player1.state, hp: player1.hp, facing: player1.facing, isCrouching: player1.isCrouching, height: player1.height, activeMoveKey: activeMoveKey });
+                } else { p1Dir = 5; }
             } else {
-                p1Dir = getJoystickDirection();
-                if (gameMode === 'BATTLE' && selectModeIndex === 1 && dummyStateSetting === 1) {
-                    updateCPU(); player2.update(2); 
-                } else {
-                    updateCPU(); player2.update(5);
-                }
+                p1Dir = getJoystickDirection(player1);
+                updateCPU(); player2.update(dummyStateSetting === 1 && selectModeIndex === 1 ? 2 : 5); 
             }
 
-            const disableMoveStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit'];
+            const disableMoveStates = ['attack', 'hitstun', 'guardstun', 'knockdown', 'air_hit', 'dash'];
             if (!disableMoveStates.includes(player1.state) && (!isOnlineMode || myPlayerType === 'p1')) {
                 player1.facing = player1.x < player2.x ? 1 : -1;
                 if ([7, 8, 9].includes(p1Dir) && player1.isGrounded) player1.vy = -18;
-                if ([1, 4, 7].includes(p1Dir)) player1.vx = -6; else if ([3, 6, 9].includes(p1Dir)) player1.vx = 6; else player1.vx = 0;
-            } else if (player1.state !== 'attack' || !player1.currentAttack || !player1.currentAttack.name.includes('竜巻')) { 
-                if(player1.state === 'attack' && player1.isGrounded) player1.vx = 0; 
+                
+                // 絶対入力から相対速度へ変換
+                if ([1, 4, 7].includes(p1Dir)) player1.vx = player1.facing * -6; // 後退
+                else if ([3, 6, 9].includes(p1Dir)) player1.vx = player1.facing * 6; // 前進
+                else player1.vx = 0;
+            } else if (player1.state !== 'attack' || !player1.currentAttack || (!player1.currentAttack.name.includes('竜巻') && !player1.currentAttack.isDash)) { 
+                if(player1.state === 'attack' && player1.isGrounded && !player1.currentAttack.isDash) player1.vx = 0;
             }
             player1.update(p1Dir);
 
             if (isOnlineMode) {
                 if (myPlayerType === 'p2') {
-                    let p2Dir = getJoystickDirection();
+                    let p2Dir = getJoystickDirection(player2);
                     if (!disableMoveStates.includes(player2.state)) {
                         player2.facing = player2.x < player1.x ? 1 : -1;
                         if ([7, 8, 9].includes(p2Dir) && player2.isGrounded) player2.vy = -18;
-                        if ([1, 4, 7].includes(p2Dir)) player2.vx = -6; else if ([3, 6, 9].includes(p2Dir)) player2.vx = 6; else player2.vx = 0;
-                    } else if (player2.state !== 'attack' || !player2.currentAttack || !player2.currentAttack.name.includes('竜巻')) {
-                        if(player2.state === 'attack' && player2.isGrounded) player2.vx = 0;
+                        if ([1, 4, 7].includes(p2Dir)) player2.vx = player2.facing * -6;
+                        else if ([3, 6, 9].includes(p2Dir)) player2.vx = player2.facing * 6; else player2.vx = 0;
+                    } else if (player2.state !== 'attack' || !player2.currentAttack || (!player2.currentAttack.name.includes('竜巻') && !player2.currentAttack.isDash)) {
+                        if(player2.state === 'attack' && player2.isGrounded && !player2.currentAttack.isDash) player2.vx = 0;
                     }
                     player2.update(p2Dir);
-
-                    socket.emit('playerUpdate', {
-                        roomId: currentRoomId, playerType: 'p2',
-                        x: player2.x, y: player2.y, vx: player2.vx, vy: player2.vy,
-                        state: player2.state, hp: player2.hp, facing: player2.facing,
-                        isCrouching: player2.isCrouching, height: player2.height, activeMoveKey: activeMoveKey
-                    });
-                } else {
-                    player2.update(5);
-                }
+                    socket.emit('playerUpdate', { roomId: currentRoomId, playerType: 'p2', x: player2.x, y: player2.y, vx: player2.vx, vy: player2.vy, state: player2.state, hp: player2.hp, facing: player2.facing, isCrouching: player2.isCrouching, height: player2.height, activeMoveKey: activeMoveKey });
+                } else { player2.update(5); }
             }
+
+            // Pushbox（衝突押し出し）処理
+            resolveCollisions();
 
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 let p = projectiles[i]; p.update(); p.draw();
@@ -1011,11 +1015,8 @@
                     let canHit = true;
                     if (player2.state === 'air_hit') {
                         const atkName = player1.currentAttack.name;
-                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) {
-                            canHit = false;
-                        }
+                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) canHit = false;
                     }
-                    
                     if (canHit && player2.state !== 'knockdown' && player2.state !== 'guardstun') { 
                         if (checkCollision(player1.attackBox, player2)) {
                             player2.evaluateHit(player1.currentAttack, player1.currentAttack.hitType || 'high');
@@ -1030,11 +1031,8 @@
                     let canHit = true;
                     if (player1.state === 'air_hit') {
                         const atkName = player2.currentAttack.name;
-                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) {
-                            canHit = false;
-                        }
+                        if (!atkName.includes('強K') && !atkName.includes('弱 昇龍拳')) canHit = false;
                     }
-
                     if (canHit && player1.state !== 'knockdown' && player1.state !== 'guardstun') {
                         if (checkCollision(player2.attackBox, player1)) {
                             player1.evaluateHit(player2.currentAttack, player2.currentAttack.hitType || 'high'); 
@@ -1049,22 +1047,12 @@
             if ((player1.hp <= 0 || player2.hp <= 0) && gameMode === 'BATTLE') { gameMode = 'GAME_OVER'; clearInterval(matchTimerInterval); }
         }
 
+        // コマンド判定バッファ猶予の延長 (400 -> 600)
         function checkCommand(pattern) {
-            const now = Date.now(); inputBuffer = inputBuffer.filter(i => now - i.time < 400); 
-            const historyStr = inputBuffer.map(i => i.dir).join(''); let targetPattern = pattern;
-            
-            let currentFacing = 1;
-            if (isOnlineMode) {
-                currentFacing = (myPlayerType === 'p1') ? player1.facing : player2.facing;
-            } else {
-                currentFacing = player1.facing;
-            }
-
-            if (currentFacing === -1) {
-                targetPattern = pattern.replace(/3/g, 'tmp').replace(/1/g, '3').replace(/tmp/g, '1')
-                                       .replace(/6/g, 'tmp').replace(/4/g, '6').replace(/tmp/g, '4');
-            }
-            return historyStr.includes(targetPattern);
+            const now = Date.now();
+            inputBuffer = inputBuffer.filter(i => now - i.time < 600); 
+            const historyStr = inputBuffer.map(i => i.dir).join(''); 
+            return historyStr.includes(pattern);
         }
 
         window.addEventListener('keydown', (event) => {
@@ -1077,11 +1065,8 @@
                 if (key === 'w') { selectModeIndex = (selectModeIndex - 1 + 3) % 3; }
                 if (key === 's') { selectModeIndex = (selectModeIndex + 1) % 3; }
                 if (isSpace) { 
-                    if (selectModeIndex === 2) {
-                        document.getElementById('room-ui').style.display = 'flex';
-                    } else {
-                        gameMode = 'CHAR_SELECT'; 
-                    }
+                    if (selectModeIndex === 2) { document.getElementById('room-ui').style.display = 'flex'; } 
+                    else { gameMode = 'CHAR_SELECT'; }
                 } 
                 return;
             }
@@ -1092,108 +1077,87 @@
                     if (isOnlineMode) {
                         socket.emit('characterSelected', { roomId: currentRoomId, playerType: myPlayerType, selectIndex: selectIndex });
                         document.getElementById('p1-name').innerText = "READY... WAITING FOR OPPONENT";
-                    } else {
-                        startBattle(); 
-                    }
+                    } else { startBattle(); }
                 } 
                 return;
             }
             if (gameMode === 'GAME_OVER') {
                 if (isSpace) { 
-                    gameMode = 'TITLE'; 
-                    document.getElementById('game-ui').style.display = 'none'; 
-                    document.getElementById('training-panel').style.display = 'none'; 
-                    if (isOnlineMode) {
-                        document.getElementById('room-ui').style.display = 'none';
-                        document.getElementById('room-status').innerText = "";
-                        isOnlineMode = false;
-                    }
+                    gameMode = 'TITLE';
+                    document.getElementById('game-ui').style.display = 'none'; document.getElementById('training-panel').style.display = 'none'; 
+                    if (isOnlineMode) { document.getElementById('room-ui').style.display = 'none'; document.getElementById('room-status').innerText = ""; isOnlineMode = false; }
                 } 
                 return;
             }
 
             if (gameMode === 'BATTLE' && selectModeIndex === 1 && key === 't' && !isOnlineMode) {
-                dummyStateSetting = (dummyStateSetting + 1) % 4;
+                dummyStateSetting = (dummyStateSetting + 1) % 5;
                 document.getElementById('dummy-state-text').innerText = DUMMY_STRINGS[dummyStateSetting];
                 return;
             }
 
             let myFighter = player1;
-            if (isOnlineMode) {
-                myFighter = (myPlayerType === 'p1') ? player1 : player2;
-            }
+            if (isOnlineMode) myFighter = (myPlayerType === 'p1') ? player1 : player2;
 
             if (['q','w','e','a','d','z','x','c'].includes(key)) {
-                if (!moveKeyStack.includes(key)) moveKeyStack.push(key); activeMoveKey = key;
-                const currentDir = getJoystickDirection();
+                if (!moveKeyStack.includes(key)) moveKeyStack.push(key);
+                activeMoveKey = key;
+                const currentDir = getJoystickDirection(myFighter); // 相対方向に修正
                 if (inputBuffer.length === 0 || inputBuffer[inputBuffer.length-1].dir !== currentDir) {
                     inputBuffer.push({ dir: currentDir, time: Date.now() });
                 }
             }
 
+            // スペースキーはキャンセルラッシュ用マクロとしても利用
             if (['j','k','l','u','i','o',' '].includes(key) || isSpace) {
-                const currentDir = getJoystickDirection();
+                const currentDir = getJoystickDirection(myFighter);
                 let strength = ['j','u'].includes(key) ? 0 : (['k','i'].includes(key) ? 1 : 2);
-                if (isSpace) strength = 3; 
+                if (isSpace) strength = 3;
+                
+                // 生ラッシュ (66 または パリィ+前)
+                if (checkCommand('66') || (isSpace && currentDir === 6)) {
+                    if (myFighter.startDriveRush()) {
+                        inputBuffer = []; return;
+                    } else {
+                        myFighter.bufferedInput = { type: 'dash', time: Date.now() };
+                    }
+                }
 
                 if ((key === 'l' || key === 'o') && (currentDir === 4 || currentDir === 6)) {
                     if (myFighter.tryThrow()) { inputBuffer = []; return; }
                 }
 
-                let success = false;
-                let isSpecial = false;
+                let success = false; let isSpecial = false;
 
+                // 236コマンド
                 if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key) || isSpace)) {
                     isSpecial = true;
-                    if (strength === 3) {
-                        if (myFighter.meter >= 1.0) { 
-                            myFighter.meter -= 1.0; 
-                            success = myFighter.startSpecialAttack('hadouken', 3); 
-                            if (!success) myFighter.meter += 1.0; 
-                        }
-                    } else { success = myFighter.startSpecialAttack('hadouken', strength); }
-                    
-                    if (!success && (strength !== 3 || myFighter.meter >= 1.0)) {
-                        myFighter.bufferedInput = { type: 'special', moveName: 'hadouken', strength: strength, time: Date.now() };
-                    }
-                    inputBuffer = []; 
+                    if (strength === 3) { success = myFighter.startSpecialAttack('hadouken', 3); } 
+                    else { success = myFighter.startSpecialAttack('hadouken', strength); }
+                    if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'hadouken', strength: strength, time: Date.now() };
+                    inputBuffer = [];
                 }
+                // 623コマンド
                 else if (checkCommand('623') && (['j','k','l',' '].includes(key) || isSpace)) {
                     isSpecial = true;
-                    if (strength === 3) {
-                        if (myFighter.meter >= 1.0) { 
-                            myFighter.meter -= 1.0; 
-                            success = myFighter.startSpecialAttack('shoryuken', 3); 
-                            if (!success) myFighter.meter += 1.0;
-                        }
-                    } else { success = myFighter.startSpecialAttack('shoryuken', strength); }
-                    
-                    if (!success && (strength !== 3 || myFighter.meter >= 1.0)) {
-                        myFighter.bufferedInput = { type: 'special', moveName: 'shoryuken', strength: strength, time: Date.now() };
-                    }
-                    inputBuffer = []; 
+                    if (strength === 3) { success = myFighter.startSpecialAttack('shoryuken', 3); } 
+                    else { success = myFighter.startSpecialAttack('shoryuken', strength); }
+                    if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'shoryuken', strength: strength, time: Date.now() };
+                    inputBuffer = [];
                 }
+                // 214コマンド
                 else if ((checkCommand('214') || checkCommand('24')) && (['u','i','o',' '].includes(key) || isSpace)) {
                     isSpecial = true;
-                    if (strength === 3) {
-                        if (myFighter.meter >= 1.0) { 
-                            myFighter.meter -= 1.0; 
-                            success = myFighter.startSpecialAttack('tatsumaki', 3); 
-                            if (!success) myFighter.meter += 1.0;
-                        }
-                    } else { success = myFighter.startSpecialAttack('tatsumaki', strength); }
-                    
-                    if (!success && (strength !== 3 || myFighter.meter >= 1.0)) {
-                        myFighter.bufferedInput = { type: 'special', moveName: 'tatsumaki', strength: strength, time: Date.now() };
-                    }
-                    inputBuffer = []; 
+                    if (strength === 3) { success = myFighter.startSpecialAttack('tatsumaki', 3); } 
+                    else { success = myFighter.startSpecialAttack('tatsumaki', strength); }
+                    if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'tatsumaki', strength: strength, time: Date.now() };
+                    inputBuffer = [];
                 }
 
-                if (!isSpecial && !isSpace) {
-                    success = myFighter.startNormalAttack(key, currentDir);
-                    if (!success) {
-                        myFighter.bufferedInput = { type: 'normal', key: key, dir: currentDir, time: Date.now() };
-                    }
+                if (!isSpecial) {
+                    let actBtn = isSpace ? 'dash_macro' : key;
+                    success = myFighter.startNormalAttack(actBtn, currentDir);
+                    if (!success) myFighter.bufferedInput = { type: 'normal', key: actBtn, dir: currentDir, time: Date.now() };
                 }
 
                 if (success) myFighter.bufferedInput = null;
@@ -1208,87 +1172,33 @@
             }
         });
 
-        document.getElementById('back-to-menu-btn').addEventListener('click', () => {
-            document.getElementById('room-ui').style.display = 'none';
-            gameMode = 'TITLE';
-        });
-
+        document.getElementById('back-to-menu-btn').addEventListener('click', () => { document.getElementById('room-ui').style.display = 'none'; gameMode = 'TITLE'; });
         document.getElementById('join-room-btn').addEventListener('click', () => {
             const roomId = document.getElementById('room-id-input').value.trim();
-            if (!roomId) {
-                alert("ルームIDを入力してください。");
-                return;
-            }
-
+            if (!roomId) { alert("ルームIDを入力してください。"); return; }
             socket = io("https://block-fight.onrender.com/");
-            currentRoomId = roomId;
-            document.getElementById('room-status').innerText = "サーバーに接続中...";
-
+            currentRoomId = roomId; document.getElementById('room-status').innerText = "サーバーに接続中...";
             socket.emit('joinRoom', roomId);
-
-            socket.on('playerAssigned', (type) => {
-                myPlayerType = type;
-                document.getElementById('room-status').innerText = `【ROOM: ${roomId}】 ${type.toUpperCase()} として接続完了。対戦相手を待っています...`;
-            });
-
-            socket.on('roomFull', () => {
-                document.getElementById('room-status').innerText = "ルームが満員です。別のIDを試してください。";
-            });
-
+            socket.on('playerAssigned', (type) => { myPlayerType = type; document.getElementById('room-status').innerText = `【ROOM: ${roomId}】 ${type.toUpperCase()} として接続完了。対戦相手を待っています...`; });
+            socket.on('roomFull', () => { document.getElementById('room-status').innerText = "ルームが満員です。別のIDを試してください。"; });
             socket.on('matchStart', () => {
                 document.getElementById('room-status').innerText = "マッチング成功！ゲームを開始します。";
-                setTimeout(() => {
-                    document.getElementById('room-ui').style.display = 'none';
-                    isOnlineMode = true;
-                    gameMode = 'CHAR_SELECT'; 
-                }, 1000);
+                setTimeout(() => { document.getElementById('room-ui').style.display = 'none'; isOnlineMode = true; gameMode = 'CHAR_SELECT'; }, 1000);
             });
-
             socket.on('opponentUpdate', (data) => {
-                let opFighter = (data.playerType === 'p1') ? player1 : player2;
-                if (!opFighter) return;
-                
-                opFighter.x = data.x;
-                opFighter.y = data.y;
-                opFighter.vx = data.vx;
-                opFighter.vy = data.vy;
-                opFighter.state = data.state;
-                opFighter.hp = data.hp;
-                opFighter.facing = data.facing;
-                opFighter.isCrouching = data.isCrouching;
-                opFighter.height = data.height;
-
-                if (data.playerType === '2') {
-                    player2MoveKey = data.activeMoveKey;
-                }
-                
-                const id = (data.playerType === 'p1') ? 'p1-hp' : 'p2-hp';
-                document.getElementById(id).style.width = data.hp + '%';
+                let opFighter = (data.playerType === 'p1') ? player1 : player2; if (!opFighter) return;
+                opFighter.x = data.x; opFighter.y = data.y; opFighter.vx = data.vx; opFighter.vy = data.vy; opFighter.state = data.state; opFighter.hp = data.hp; opFighter.facing = data.facing; opFighter.isCrouching = data.isCrouching; opFighter.height = data.height;
+                if (data.playerType === 'p2') player2MoveKey = data.activeMoveKey;
+                const id = (data.playerType === 'p1') ? 'p1-hp' : 'p2-hp'; document.getElementById(id).style.width = data.hp + '%';
             });
-
             socket.on('opponentAttack', (data) => {
-                let opFighter = (data.playerType === 'p1') ? player1 : player2;
-                if (!opFighter) return;
-
-                if (data.attackType === 'normal') {
-                    opFighter.startNormalAttack(data.btnType, data.dirNum);
-                } else if (data.attackType === 'special') {
-                    opFighter.startSpecialAttack(data.moveName, data.strength);
-                } else if (data.attackType === 'throw') {
-                    opFighter.tryThrow();
-                }
+                let opFighter = (data.playerType === 'p1') ? player1 : player2; if (!opFighter) return;
+                if (data.attackType === 'normal') opFighter.startNormalAttack(data.btnType, data.dirNum);
+                else if (data.attackType === 'special') opFighter.startSpecialAttack(data.moveName, data.strength);
+                else if (data.attackType === 'throw') opFighter.tryThrow();
             });
-
-            socket.on('opponentCharacterSelected', (data) => {
-                if (data.playerType !== myPlayerType) {
-                    startBattle();
-                }
-            });
-
-            socket.on('opponentDisconnected', () => {
-                alert("対戦相手が切断されました。タイトルに戻ります。");
-                location.reload();
-            });
+            socket.on('opponentCharacterSelected', (data) => { if (data.playerType !== myPlayerType) startBattle(); });
+            socket.on('opponentDisconnected', () => { alert("対戦相手が切断されました。タイトルに戻ります。"); location.reload(); });
         });
 
         animate();
