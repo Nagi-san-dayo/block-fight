@@ -501,7 +501,7 @@
                 let target = (this === player1) ? player2 : player1;
                 let dist = Math.abs((this.x + this.width/2) - (target.x + target.width/2));
                 if (dist < 140 && target.isGrounded && target.state !== 'hitstun' && !target.invincible && target.state !== 'knockdown' && target.state !== 'air_hit') {
-                    this.state = 'attack'; this.stateTimer = 30; this.vx = 0;
+                    this.state = 'attack'; this.stateTimer = 30; this.vx = 0; this.currentAttack = { name: 'THROW', isDash: false, isProjectile: false };
                     const id = (this === player1) ? 'p1-status' : 'p2-status';
                     document.getElementById(id).innerText = '背負い投げ!';
                     target.state = 'knockdown'; target.stateTimer = 40;
@@ -538,8 +538,8 @@
 
                 // SF6風EX（OD）技はドライブゲージ2本消費
                 if (strength === 3) {
-                    if (this.drive < 2.0 && !this.isBurnout) return false; // バーンアウト中はEX不可
-                    if (!this.isBurnout) this.updateDrive(-2.0);
+                    if (this.meter < 1.0) return false;
+                    this.addMeter(-1.0)
 
                     this.state = 'attack'; this.vx = 0;
                     let exName = '';
@@ -900,8 +900,11 @@
                 ctx.fillStyle = cutInAttacker.color; let bandY = canvas.height / 2 - 80;
                 ctx.fillRect(0, bandY, canvas.width, 160); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, bandY, canvas.width, 4); ctx.fillRect(0, bandY + 160, canvas.width, 4);
                 ctx.fillStyle = '#ffffff'; ctx.font = 'italic bold 64px "Arial Black", sans-serif'; ctx.textAlign = 'center';
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#000000';
                 let textX = canvas.width / 2;
                 if (cutInTimer > CUTIN_DURATION - 10) textX = (canvas.width / 2) + (cutInTimer - (CUTIN_DURATION - 10)) * 60 * cutInAttacker.facing;
+                ctx.strokeText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 22);
                 ctx.fillText(cutInAttacker.currentAttack.name, textX, canvas.height / 2 + 22);
                 if (cutInTimer === 0) { executeSpecialAfterCutIn(cutInAttacker); } return;
             }
