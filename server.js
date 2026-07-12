@@ -47,7 +47,7 @@ io.on('connection', (socket) => {
     // プレイヤーのデータ（座標、状態など）を受信して相手に転送
     socket.on('playerUpdate', (data) => {
         // data = { roomId, playerType, x, y, state, ... }
-        socket.to(data.roomId).to(data.roomId).emit('opponentUpdate', data);
+        socket.to(data.roomId).emit('opponentUpdate', data);
     });
 
     // 攻撃や飛び道具の発動を同期
