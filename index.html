@@ -144,6 +144,8 @@
         let myPlayerType = null; 
         let currentRoomId = null;
         let isOnlineMode = false;
+        let isMyCharReady = false;
+        let isOpCharReady = false;
 
         let cutInTimer = 0;
         let cutInAttacker = null;
@@ -1018,7 +1020,7 @@
                     let canHit = true;
                     if (player2.state === 'air_hit') {
                         const atkName = player1.currentAttack.name;
-                        if (!atkName.includes('強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
+                        if (!atkName.includes('しゃがみ強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
                     }
                     if (canHit && player2.state !== 'knockdown') { 
                         if (checkCollision(player1.attackBox, player2)) {
@@ -1034,7 +1036,7 @@
                     let canHit = true;
                     if (player1.state === 'air_hit') {
                         const atkName = player2.currentAttack.name;
-                        if (!atkName.includes('強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
+                        if (!atkName.includes('しゃがみ強K') && !atkName.includes('弱 四角アッパー')) canHit = false;
                     }
                     if (canHit && player1.state !== 'knockdown') {
                         if (checkCollision(player2.attackBox, player1)) {
@@ -1080,6 +1082,7 @@
                     if (isOnlineMode) {
                         socket.emit('characterSelected', { roomId: currentRoomId, playerType: myPlayerType, selectIndex: selectIndex });
                         document.getElementById('p1-name').innerText = "READY... WAITING FOR OPPONENT";
+                        if(isOpCharReady) startBattle();
                     } else { startBattle(); }
                 } 
                 return;
@@ -1087,6 +1090,8 @@
             if (gameMode === 'GAME_OVER') {
                 if (isSpace) { 
                     gameMode = 'TITLE';
+                    isMyCharReady = false;
+                    isOpCharReady = false;
                     document.getElementById('game-ui').style.display = 'none'; document.getElementById('training-panel').style.display = 'none'; 
                     if (isOnlineMode) { document.getElementById('room-ui').style.display = 'none'; document.getElementById('room-status').innerText = ""; isOnlineMode = false; }
                 } 
@@ -1200,7 +1205,12 @@
                 else if (data.attackType === 'special') opFighter.startSpecialAttack(data.moveName, data.strength);
                 else if (data.attackType === 'throw') opFighter.tryThrow();
             });
-            socket.on('opponentCharacterSelected', (data) => { if (data.playerType !== myPlayerType) startBattle(); });
+            socket.on('opponentCharacterSelected', (data) => {
+                 if (data.playerType !== myPlayerType) {
+                    isOpCharReady = true;
+                    if(isMyCharReady)
+                  startBattle();}
+                 });
             socket.on('opponentDisconnected', () => { alert("対戦相手が切断されました。タイトルに戻ります。"); location.reload(); });
         });
 

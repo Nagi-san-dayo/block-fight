@@ -54,6 +54,10 @@ io.on('connection', (socket) => {
     socket.on('playerAttack', (data) => {
         socket.to(data.roomId).emit('opponentAttack', data);
     });
+    
+    socket.on('characterSelected', (data) => {
+        socket.to(data.roomId).emit('opponentCharacterSelected', data);
+    });
 
     // 切断時の処理
     socket.on('disconnect', () => {
