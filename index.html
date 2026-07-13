@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Super Fighting Fighter - Advanced Online & Cut-In Edition</title>
+    <title>BLOCK FIGHT</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -134,8 +134,8 @@
         let gameMode = 'TITLE'; 
         let selectModeIndex = 0; 
         let selectIndex = 0; 
-        const CHAR_COLORS = ['#ffffff', '#ff3333', '#3366ff'];
-        const CHAR_NAMES = ['RYU-WHITE', 'KEN-RED', 'RYU-BLUE'];
+        const CHAR_COLORS = ['#ffffff', '#222222', '#3366ff'];
+        const CHAR_NAMES = ['RYU-WHITE', 'GOUKI-BLACK', 'RYU-BLUE'];
 
         let dummyStateSetting = 0;
         const DUMMY_STRINGS = ['立ち (IDLE)', 'しゃがみ (CROUCH)', '常時ガード (ALWAYS GUARD)', '途中からガード (COMBO GUARD)', 'ジャストパリィ (PARRY)'];
@@ -149,6 +149,15 @@
 
         let cutInTimer = 0;
         let cutInAttacker = null;
+        // ==========================================
+// 瞬獄殺（一瞬千撃）の演出管理用変数
+// ==========================================
+let shungokuActive = false;
+let shungokuTimer = 0;
+let shungokuAttacker = null;
+let shungokuTarget = null;
+let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
+
         const CUTIN_DURATION = 40; 
 
         // ドライブゲージUIの生成 (6本分)
@@ -169,18 +178,27 @@
                 this.width = isEX ? 110 : 70; this.height = isEX ? 90 : 60;
                 this.speed = (isEX ? 14 : 7 + strength * 2.5) * direction; 
                 this.owner = owner; 
+                if(owner.name === 'GOUKI-BLACK') {
+                    this.name = isAir ? '斬空波動拳' : (isEX ? 'EX灼熱波動拳' : '豪波動拳');
+                }else{
                 this.name = isEX ? '四角飛角(1G)' : ['弱 四角飛角','中 四角飛角','強 四角飛角'][strength];
+                }
                 this.damage = isEX ? 18 : 8; 
                 this.hitStun = isEX ? 30 : 15; this.guardStun = isEX ? 18 : 10; 
                 this.hitType = 'high'; this.isActive = true; this.isEX = isEX; 
                 this.hits = isEX ? 3 : 1; this.knockdown = isEX; this.launch = isEX; 
+                this.vy = isAir ? 5 : 0;
             }
             update() { 
                 this.x += this.speed;
                 if (this.x < -100 || this.x > canvas.width + 100) this.isActive = false;
             }
             draw() { 
+                if(this.owner.name === 'GOUKI-BLACK'){
+                    ctx.fillStyle = this.isEX ? '#ff3300' : '#cc33ff';
+                }else{
                 ctx.fillStyle = this.isEX ? '#cc33ff' : '#00f3ff'; 
+                }
                 ctx.beginPath();
                 ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2, this.height/2, 0, 0, Math.PI * 2);
                 ctx.fill();
@@ -278,6 +296,13 @@
             }
 
             update(currentDirNum) {
+                    // 瞬獄殺の演出中は、キャラ個別タイマーや位置更新などの通常処理をすべてストップ
+    if (shungokuActive) {
+        if (this === shungokuAttacker || this === shungokuTarget) {
+            this.vx = 0; this.vy = 0;
+            return; 
+        }
+    }
                 if (this.hitstopTimer > 0) {
                     this.hitstopTimer--;
                     return; 
@@ -344,6 +369,31 @@
                 if (this.x + this.width > canvas.width) { this.x = canvas.width - this.width; if(this.state === 'dash') this.vx = 0; }
 
                 this.updateAttackBox();
+                    // 瞬獄殺の掴み判定チェック（移動投げ）
+    let targetFighter = (this === player1) ? player2 : player1;
+    if (this.state === 'attack' && this.currentAttack && this.currentAttack.isShunGokuSatsu) {
+        let dist = Math.abs((this.x + this.width/2) - (targetFighter.x + targetFighter.width/2));
+        
+        // 相手が近くにいて、地上かつ無敵状態でなければ掴み成立
+        if (dist < 120 && targetFighter.isGrounded && !targetFighter.invincible && targetFighter.state !== 'knockdown') {
+            shungokuActive = true;
+            shungokuTimer = 130; // 演出の総フレーム数（約2秒強）
+            shungokuAttacker = this;
+            shungokuTarget = targetFighter;
+            shungokuFlashes = [];
+            
+            // お互いのステートを演出用にロック
+            this.state = 'attack';
+            this.stateTimer = 130;
+            this.vx = 0; this.vy = 0;
+            
+            targetFighter.state = 'hitstun';
+            targetFighter.stateTimer = 130;
+            targetFighter.vx = 0; targetFighter.vy = 0;
+            
+            this.currentAttack = null; // 掴み判定を消去
+        }
+    }
 
                 if (this.multihitCount > 0) {
                     this.multihitTimer--;
@@ -436,6 +486,21 @@
                 
                 let isCrouching = [1, 2, 3].includes(dirNum) && this.isGrounded;
                 let isJumping = !this.isGrounded;
+                if(this.name === 'GOUKI-BLACK' && isJumping && [1,2,3].includes(dirNum) && isKick && strengthNum === 1){
+                    this.state = 'attack';
+                    this.hasHitThisAttack = false;
+                    this.vx = this.facing * 6;
+                    this.vy = 12;
+                    this.currentAttack = {
+                        name: '天魔空刃脚', damage : 6,
+                        width: 80, height: 70, offsetX: 40, offsetY: 150,
+                        rec:6, active: 2, hitStun: 18, guardStun: 10, hitType: 'overhead',
+                        cancelable: false, rapidCancelable: false, knockdown: false, launch: false
+                    };
+                    this.stateTimer = 35;
+                    this.updateAttackBoc();
+                    document.getElementById((this === player1) ? 'p1-status' : 'p2-status' )
+                }
                 let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
                 let isAirborne = (!this.isGrounded && this.state !== 'idle');
                 let isDR = (this.state === 'attack' && this.currentAttack && this.currentAttack.isDash); // ドライブラッシュからの派生
@@ -453,11 +518,17 @@
                 let stanceName = isJumping ? 'ジャンプ' : (isCrouching ? 'しゃがみ' : '立ち');
                 let name = `${stanceName}${strengthName}${typeName}`;
                 let type = isCrouching ? (isKick ? 'low' : 'high') : (isJumping ? 'overhead' : 'high');
-                let isOverhead = !isJumping && !isCrouching && isPunch && strengthNum === 1 && dirNum === 6; // dirNumは絶対方向ではなく相対方向に修正済み
-                if (isOverhead) { name = '鎖骨割り'; type = 'overhead'; }
-
+                let isOverhead = !isJumping && ! isCrouching && isPunch && strengthNum === 1 && dirNum === 6;
+                if(isOverhead){
+                    if(this.name === 'GOUKI-BLACK'){
+                        name = '頭蓋破殺';
+                    }else{
+                        name = '鎖骨割り';
+                        type = 'overhead';
+                    }
+                }
                 let isSweep = isCrouching && isKick && strengthNum === 2;
-                if (isSweep) { name = 'しゃがみ強K'; }
+                if(isSweep){ name = this.name === 'GOUKI-BLACK' ? '赤緑足払い' : 'しゃがみ強K';}
 
                 this.state = 'attack';
                 this.hasHitThisAttack = false;
@@ -562,21 +633,44 @@
                 const statusId = (this === player1) ? 'p1-status' : 'p2-status';
 
                 if (moveName === 'hadouken') {
-                    this.currentAttack = { 
-                        name: ['弱 四角飛角','中 四角飛角','強 四角飛角'][strength], 
-                        isProjectile: true, damage: 8, hitStun: 15, guardStun: -3, knockdown: false, launch: false
+                    if(!this.isGrounded && this.name === 'GOUKI-BLACK'){
+                        this.currentAttack = {
+                            name: ['弱 斬空波動拳','中 斬空波動拳','強 斬空波動拳'][strengh],
+                            isProjectile: true, damage: 7, hitStun: 16, guardStun: 8, knockdown: false, launch: false
+                        };
+                    this.stateTimer = 38;
+                    this.vy = -1;
+                    let spawnX = this.facing === 1 ? this.X + this.width + 10 : this.x - 80;
+                    projectiles.push(new Fireball(spawnX, this.y + 60, this.facing, this, false, strength, true));
+                } else{
+                    this.currentAttack = {
+                        name: this.name === 'GOUKI-BLACK' ? '豪波動拳' : ['弱 四角飛角','中 四角飛角','強 四角飛角'][strength],
+                        isProjectile: true, damage: 8, hitStun: 15, guardStun: 8, knockdown: false, launch: false
                     };
-                    this.stateTimer = 42;
-                    let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
-                    projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this, false, strength));
-                    document.getElementById(statusId).innerText = this.currentAttack.name;
-                } 
+                    this.stateTimer = 40;
+                    let spawnX = this.facing === 1 ? this.x +this.width + 10 : this.x - 80;
+                    projectiles.push(new Fireball(spawnX, this.y + 30, this.facing, this, false, strength , false));
+                }
+                document.getElementById(statusId).innerText = this.currentAttack.name;
+            } 
                 else if (moveName === 'shoryuken') {
                     let jumpHeight = -16 - strength * 2;
                     this.vy = jumpHeight; this.invincibleTimer = 8; 
+                    if(this.name === 'GOUKI-BLACK'){
+                        this.currentAttack = {
+                            name: ['弱 豪昇竜拳','中 豪昇竜拳','強 豪昇竜拳'] [strength],
+                        damege: 5, width: 130, height: 220, offsetX: 40, offsetY: -60,
+                    rec: 35, hitStun: 35,guardStun: 12, knockdown: true, launch: true
+                    };
+                    this.stateTimer = 65;
+                    this.vx = this.facing *(3 + strength);
+                    this.multihitCount = 2;
+                    this.multihitTimer= 6;
+                }else{
+                }
                     this.currentAttack = { 
                         name: ['弱 四角アッパー','中 四角アッパー','強 四角アッパー'][strength], 
-                        damage: 12 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, 
+                        damage: 10 + strength * 2, width: 120, height: 200, offsetX: 50, offsetY: -50, 
                         rec: 30, hitStun: 35, guardStun: -20, knockdown: true, launch: true 
                     };
                     this.stateTimer = 60; this.vx = this.facing * (2 + strength);
@@ -584,14 +678,56 @@
                 } 
                 else if (moveName === 'tatsumaki') {
                     this.currentAttack = { 
-                        name: ['弱 四角回転','中 四角回転','強 四角回転'][strength], 
+                        name:this.name === 'GOUKI-BLACK' ? ['弱 竜巻斬空脚','中 竜巻斬空脚','強 竜巻斬空脚'][strength]: ['弱 四角回転','中 四角回転','強 四角回転'][strength], 
                         damage: 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, 
-                        rec: 10, hitStun: 26, guardStun: -8, knockdown: true, launch: true 
+                        rec: 10, hitStun: 26, guardStun: 8, knockdown: true, launch: true 
                     };
                     this.stateTimer = 30 + strength * 4; // 時間を少し長めに設定し、自然着地を待つ
                     this.vy = -6; this.tatsuSpeed = this.facing * (6 + strength); 
                     document.getElementById(statusId).innerText = this.currentAttack.name;
                 }
+                else if (moveName === 'teleport'){
+                    this.currentAttack = { name: '阿修羅閃空', isDash: true, isProjecttile: false};
+                    this.stateTimer = 40;
+                    this.invincibleTimer = 35;
+                    this.vx = this.facing * (strength === 0 ? -12 : 15);
+                    document.getElementById(statusId).innerText = this. currentAttack.name;
+                }
+                    // ==========================================
+    // 【豪鬼専用・SA3】 瞬獄殺 の発動処理
+    // ==========================================
+    else if (moveName === 'shungokusatsu') {
+        if (this.meter < 3.0 || !this.isGrounded) return false;
+        
+        this.meter = 0; // 3ゲージ全消費
+        const id = (this === player1) ? 'p1' : 'p2';
+        document.getElementById(`${id}-gauge`).style.width = '0%';
+        document.getElementById(`${id}-gauge-text`).innerText = `0.0 / 3`;
+
+        this.state = 'attack';
+        this.stateTimer = 50;       // 掴みかかるための突進時間
+        this.invincibleTimer = 50;  // 突進中は完全無敵
+        this.vx = this.facing * 16; // 前方へ高速スライド移動
+        this.vy = 0;
+        
+        this.currentAttack = { 
+            name: '一瞬千撃… 瞬獄殺！', 
+            isShunGokuSatsu: true, 
+            damage: 0, // 掴んだ後の演出中にダメージを刻むためここでは0
+            width: 120, height: 220, offsetX: 0, offsetY: 0 
+        };
+        document.getElementById(statusId).innerText = this.currentAttack.name;
+        
+        // 始動時の暗転効果としてEXカットインタイマーを起動
+        cutInTimer = 25; 
+        cutInAttacker = this;
+        
+        if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
+            socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName: 'shungokusatsu', strength: 0 });
+        }
+        return true;
+    }
+
                 this.updateAttackBox();
                 if (isOnlineMode && ((myPlayerType === 'p1' && this === player1) || (myPlayerType === 'p2' && this === player2))) {
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
@@ -663,7 +799,7 @@
                         this.updateDrive(-0.5); // ガードでドライブ消費
                     }
 
-                    this.state = 'guardstun'; this.stateTimer = finalGuardStun;
+                    this.state = 'guardstun'; this.stateTimer = Math.max(1, finalGuardStun);
                     
                     let pushDist = 12;
                     if (attack.name && attack.name.includes('弱')) { pushDist = 20; } 
@@ -730,18 +866,18 @@
             let moveName = fighter.currentAttack.rawMoveName;
             const statusId = (fighter === player1) ? 'p1-status' : 'p2-status';
             if (moveName === 'hadouken') {
-                fighter.currentAttack = { name: 'EX四角飛角(G1))', isProjectile: true, damage: 30, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角飛角(G1))', isProjectile: true, damage: 15, hitStun: 40, guardStun: 24, knockdown: true, launch: true };
                 fighter.stateTimer = 45; 
                 let spawnX = fighter.facing === 1 ? fighter.x + fighter.width + 10 : fighter.x - 80;
                 projectiles.push(new Fireball(spawnX, fighter.y + 30, fighter.facing, fighter, true, 3));
             } 
             else if (moveName === 'shoryuken') {
                 fighter.vy = -22; fighter.invincibleTimer = 8; 
-                fighter.currentAttack = { name: 'EX四角アッパー(G1)', damage: 20, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角アッパー(G1)', damage: 10, width: 120, height: 200, offsetX: 50, offsetY: -50, rec: 30, hitStun: 35, guardStun: -25, knockdown: true, launch: true };
                 fighter.stateTimer = 50; fighter.vx = fighter.facing * 4; fighter.multihitCount = 2; fighter.multihitTimer = 5;
             } 
             else if (moveName === 'tatsumaki') {
-                fighter.currentAttack = { name: 'EX四角回転(G1)', damage: 10, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
+                fighter.currentAttack = { name: 'EX四角回転(G1)', damage: 5, width: 150, height: 80, offsetX: -20, offsetY: 40, rec: 15, hitStun: 26, guardStun: -12, knockdown: true, launch: true };
                 fighter.stateTimer = 50; fighter.vy = -6; fighter.tatsuSpeed = fighter.facing * 9; fighter.multihitCount = 4; fighter.multihitTimer = 10;
             }
             document.getElementById(statusId).innerText = fighter.currentAttack.name;
@@ -817,6 +953,108 @@
                 if (player1.x > canvas.width - player1.width) { player1.x = canvas.width - player1.width; player2.x -= overlap*2; }
             }
         }
+        // ==========================================
+// 瞬獄殺の全画面演出＆描画アップデート
+// ==========================================
+function updateAndDrawShungokusatsu() {
+    if (!shungokuActive) return;
+    
+    shungokuTimer--;
+    
+    // 1. 画面全体を暗転（真っ黒にする）
+    ctx.fillStyle = 'rgba(5, 5, 5, 0.95)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 2. 連撃フェーズ（最初の100フレームの間、激しく火花が散りダメージが刻まれる）
+    if (shungokuTimer > 30) {
+        if (shungokuTimer % 4 === 0) { // 4フレームに1回ヒット
+            shungokuTarget.hp = Math.max(0, shungokuTarget.hp - 1.5); // 連続ダメージ
+            shungokuTarget.comboCount++;
+            shungokuTarget.comboDamage = Math.floor(shungokuTarget.comboDamage + 1.5);
+            shungokuTarget.comboTimer = 90;
+            
+            // HPバーとコンボUIの更新
+            const targetId = (shungokuTarget === player1) ? 'p1' : 'p2';
+            document.getElementById(`${targetId}-hp`).style.width = shungokuTarget.hp + '%';
+            const comboEl = document.getElementById(`${targetId}-combo`);
+            comboEl.innerText = `${shungokuTarget.comboCount} HIT! (${shungokuTarget.comboDamage} DMG)`;
+            comboEl.style.opacity = 1;
+            
+            // ランダムに画面を切り裂く一閃（赤いライン）のエフェクトを生成
+            shungokuFlashes.push({
+                x1: Math.random() * canvas.width,
+                y1: Math.random() * canvas.height,
+                x2: Math.random() * canvas.width,
+                y2: Math.random() * canvas.height,
+                color: Math.random() > 0.2 ? '#ff1100' : '#ffffff',
+                life: 5
+            });
+        }
+    }
+    
+    // 一閃エフェクトの描画
+    ctx.lineWidth = 5;
+    for (let i = shungokuFlashes.length - 1; i >= 0; i--) {
+        let f = shungokuFlashes[i];
+        ctx.strokeStyle = f.color;
+        ctx.beginPath();
+        ctx.moveTo(f.x1, f.y1);
+        ctx.lineTo(f.x2, f.y2);
+        ctx.stroke();
+        f.life--;
+        if (f.life <= 0) shungokuFlashes.splice(i, 1);
+    }
+    
+    // 3. フィニッシュフェーズ（最後の30フレーム：豪鬼の背中に「天」が浮かび上がる）
+    if (shungokuTimer <= 30) {
+        // 豪鬼のシルエットを描画
+        ctx.fillStyle = '#111111';
+        ctx.strokeStyle = '#ff3300';
+        ctx.lineWidth = 3;
+        ctx.fillRect(shungokuAttacker.x, shungokuAttacker.y, shungokuAttacker.width, shungokuAttacker.height);
+        ctx.strokeRect(shungokuAttacker.x, shungokuAttacker.y, shungokuAttacker.width, shungokuAttacker.height);
+        
+        // 背中に浮かび上がる巨大な「天」の文字
+        ctx.fillStyle = '#ff0033';
+        ctx.font = 'bold 180px "MS Mincho", "Heisei Mincho", "Hiragino Mincho ProN", serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // 妖しく光るグロー効果
+        ctx.shadowBlur = 40;
+        ctx.shadowColor = '#ff0000';
+        
+        // 豪鬼の位置に合わせて文字を表示
+        ctx.fillText('角', shungokuAttacker.x + shungokuAttacker.width / 2, shungokuAttacker.y + shungokuAttacker.height / 2);
+        
+        // 影効果をリセット（他の描画に影響が出ないようにする）
+        ctx.shadowBlur = 0;
+    }
+    
+    // 4. 演出終了・相手を吹き飛ばしダウン
+    if (shungokuTimer <= 0) {
+        shungokuActive = false;
+        
+        // 最終トドメダメージ（大ダメージ）
+        shungokuTarget.hp = Math.max(0, shungokuTarget.hp - 15);
+        shungokuTarget.comboDamage += 15;
+        const targetId = (shungokuTarget === player1) ? 'p1' : 'p2';
+        document.getElementById(`${targetId}-hp`).style.width = shungokuTarget.hp + '%';
+        
+        // 相手を遥か彼方へ吹き飛ばす物理挙動を設定
+        shungokuTarget.state = 'air_hit';
+        shungokuTarget.stateTimer = 60;
+        shungokuTarget.vy = -14;
+        shungokuTarget.vx = -shungokuAttacker.facing * 12;
+        
+        // 豪鬼自身を通常状態に戻す
+        shungokuAttacker.state = 'idle';
+        shungokuAttacker.stateTimer = 0;
+        
+        shungokuAttacker = null;
+        shungokuTarget = null;
+    }
+}
 
         let cpuTimer = 0;
         function updateCPU() {
@@ -1048,6 +1286,8 @@
             }
 
             player1.draw(); player2.draw();
+// 全ての通常描画が終わった後に上書きして全画面暗転させる
+updateAndDrawShungokusatsu();
 
             if ((player1.hp <= 0 || player2.hp <= 0) && gameMode === 'BATTLE') { gameMode = 'GAME_OVER'; clearInterval(matchTimerInterval); }
         }
@@ -1161,6 +1401,46 @@
                     if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'tatsumaki', strength: strength, time: Date.now() };
                     inputBuffer = [];
                 }
+                if(currentDirNum === 6 && e.key === 'o'){
+                    player1.startSpecialAttack('teleport', 2);    
+            }
+            else if(currentDirNum === 4 && e.key === 'o'){
+                    player1.startSpecialAttack('teleport', 0);
+                }
+                // 瞬獄殺コマンド入力監視用のバッファ変数
+let goukiCommandBuffer = [];
+let lastGoukiKeyTime = 0;
+
+// window.addEventListener('keydown', (e) => { ... }) の中に以下を追加してください
+const nowTime = Date.now();
+if (nowTime - lastGoukiKeyTime > 400) {
+    goukiCommandBuffer = []; // キー入力の間隔が0.4秒以上空いたらバッファをリセット
+}
+lastGoukiKeyTime = nowTime;
+
+let pressedKey = e.key.toLowerCase();
+goukiCommandBuffer.push(pressedKey);
+if (goukiCommandBuffer.length > 8) goukiCommandBuffer.shift(); // 過去8キーまで記憶
+
+// 豪鬼が右を向いていれば前キーは 'd'、左を向いていれば 'a'
+let forwardKeyNum = (player1.facing === 1) ? 'd' : 'a';
+
+if (goukiCommandBuffer.length >= 5) {
+    let len = goukiCommandBuffer.length;
+    // 【j (弱P) -> j (弱P) -> 前方向 -> u (弱K) -> l (強P)】が順番に押されたかチェック
+    if (goukiCommandBuffer[len-5] === 'j' && 
+        goukiCommandBuffer[len-4] === 'j' && 
+        goukiCommandBuffer[len-3] === forwardKeyNum && 
+        goukiCommandBuffer[len-2] === 'u' && 
+        goukiCommandBuffer[len-1] === 'l') {
+        
+        // プレイヤー1が豪鬼（GOUKI-BLACK）の時に、3ゲージあれば発動！
+        if (player1.name === 'GOUKI-BLACK') {
+            let triggered = player1.startSpecialAttack('shungokusatsu', 0);
+            if (triggered) goukiCommandBuffer = []; // 成立したらバッファクリア
+        }
+    }
+}
 
                 if (!isSpecial) {
                     let actBtn = isSpace ? 'dash_macro' : key;
