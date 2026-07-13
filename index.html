@@ -134,7 +134,7 @@
         let gameMode = 'TITLE'; 
         let selectModeIndex = 0; 
         let selectIndex = 0; 
-        const CHAR_COLORS = ['#ffffff', '#222222', '#3366ff'];
+        const CHAR_COLORS = ['#ffffff', '#555555', '#3366ff'];
         const CHAR_NAMES = ['RYU-WHITE', 'GOUKI-BLACK', 'RYU-BLUE'];
 
         let dummyStateSetting = 0;
@@ -179,7 +179,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                 this.speed = (isEX ? 14 : 7 + strength * 2.5) * direction; 
                 this.owner = owner; 
                 if(owner.name === 'GOUKI-BLACK') {
-                    this.name = isAir ? '斬空波動拳' : (isEX ? 'EX灼熱波動拳' : '豪波動拳');
+                    this.name = !owner.isGrounded ? '斬空波動拳' : (isEX ? 'EX灼熱波動拳' : '豪波動拳');
                 }else{
                 this.name = isEX ? '四角飛角(1G)' : ['弱 四角飛角','中 四角飛角','強 四角飛角'][strength];
                 }
@@ -187,7 +187,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                 this.hitStun = isEX ? 30 : 15; this.guardStun = isEX ? 18 : 10; 
                 this.hitType = 'high'; this.isActive = true; this.isEX = isEX; 
                 this.hits = isEX ? 3 : 1; this.knockdown = isEX; this.launch = isEX; 
-                this.vy = isAir ? 5 : 0;
+                this.vy = !owner.isGrounded ? 5 : 0;
             }
             update() { 
                 this.x += this.speed;
@@ -498,7 +498,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                         cancelable: false, rapidCancelable: false, knockdown: false, launch: false
                     };
                     this.stateTimer = 35;
-                    this.updateAttackBoc();
+                    this.updateAttackBox();
                     document.getElementById((this === player1) ? 'p1-status' : 'p2-status' )
                 }
                 let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
@@ -635,7 +635,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                 if (moveName === 'hadouken') {
                     if(!this.isGrounded && this.name === 'GOUKI-BLACK'){
                         this.currentAttack = {
-                            name: ['弱 斬空波動拳','中 斬空波動拳','強 斬空波動拳'][strengh],
+                            name: ['弱 斬空波動拳','中 斬空波動拳','強 斬空波動拳'][strength],
                             isProjectile: true, damage: 7, hitStun: 16, guardStun: 8, knockdown: false, launch: false
                         };
                     this.stateTimer = 38;
@@ -678,7 +678,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                 } 
                 else if (moveName === 'tatsumaki') {
                     this.currentAttack = { 
-                        name:this.name === 'GOUKI-BLACK' ? ['弱 竜巻斬空脚','中 竜巻斬空脚','強 竜巻斬空脚'][strength]: ['弱 四角回転','中 四角回転','強 四角回転'][strength], 
+                        name:this.name === 'GOUKI-BLACK' ? ['弱 斬空回転脚','中 斬空回転脚','強 斬空回転脚'][strength]: ['弱 四角回転','中 四角回転','強 四角回転'][strength], 
                         damage: 10 + strength, width: 150, height: 80, offsetX: -20, offsetY: 40, 
                         rec: 10, hitStun: 26, guardStun: 8, knockdown: true, launch: true 
                     };
@@ -733,7 +733,33 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
                 }
                 return true;
-            }
+                // === ここから瞬獄殺の処理を追加 ===
+    if (moveName === 'shungoku') {
+        this.state = 'attack';
+        this.attackTimer = 40; // 技の持続時間
+        this.currentAttack = {
+            name: '瞬獄殺',
+            type: 'special',
+            damage: 0, // 掴み判定なので最初は0（ヒット演出中に大ダメージを与えるため）
+            isShunGokuSatsu: true // 瞬獄殺フラグを有効化
+        };
+        this.vx = 15 * this.facing; // 高速で前進
+        this.vy = 0;
+        
+        // UI表示の更新
+        document.getElementById((this === player1) ? 'p1-status' : 'p2-status').innerText = "瞬獄殺";
+        if (socket && currentRoomId) {
+            socket.emit('playerAttack', {
+                roomId: currentRoomId,
+                playerType: myPlayerType,
+                attackType: 'special',
+                moveName: 'shungoku',
+                strength: 0
+            });
+        }
+    }
+    // === ここまで ===
+} // startSpecialAttack の終わり
 
             evaluateHit(attack, hitType) {
                 if (this.invincible && this.state !== 'air_hit') return;
