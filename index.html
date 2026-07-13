@@ -693,6 +693,19 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                     this.vx = this.facing * (strength === 0 ? -12 : 15);
                     document.getElementById(statusId).innerText = this. currentAttack.name;
                 }
+                else if (moveName === 'hyakkishu') {
+                    this.currentAttack = { 
+                        name: ['弱 百鬼襲','中 百鬼襲','強 百鬼襲'][strength], 
+                        damage: 8 + strength * 2, width: 100, height: 100, offsetX: 40, offsetY: 80, 
+                        rec: 20, hitStun: 28, guardStun: 15, hitType: 'overhead', knockdown: true, launch: false 
+                    };
+                    // スト6風の前方への鋭い山なりジャンプ
+                    this.stateTimer = 45;
+                    this.vy = -14 - (strength * 1.5);
+                    this.vx = this.facing * (5 + strength * 1.5);
+                    document.getElementById(statusId).innerText = this.currentAttack.name;
+                
+                }
                     // ==========================================
     // 【豪鬼専用・SA3】 瞬獄殺 の発動処理
     // ==========================================
@@ -1372,28 +1385,54 @@ updateAndDrawShungokusatsu();
                 return;
             }
 
-            let myFighter = player1;
+                       let myFighter = player1;
             if (isOnlineMode) myFighter = (myPlayerType === 'p1') ? player1 : player2;
+
+            // === 瞬獄殺コマンド入力監視用の処理（パンチ/キックの判定より前に移動） ===
+            const nowTime = Date.now();
+            if (nowTime - lastGoukiKeyTime > 400) {
+                goukiCommandBuffer = []; // キー入力の間隔が0.4秒以上空いたらバッファをリセット
+            }
+            lastGoukiKeyTime = nowTime;
+            goukiCommandBuffer.push(key);
+            if (goukiCommandBuffer.length > 8) goukiCommandBuffer.shift();
+
+            let forwardKeyNum = (player1.facing === 1) ? 'd' : 'a';
+            if (goukiCommandBuffer.length >= 5) {
+                let len = goukiCommandBuffer.length;
+                if (goukiCommandBuffer[len-5] === 'j' && 
+                    goukiCommandBuffer[len-4] === 'j' && 
+                    goukiCommandBuffer[len-3] === forwardKeyNum && 
+                    goukiCommandBuffer[len-2] === 'u' && 
+                    goukiCommandBuffer[len-1] === 'l') {
+                    
+                    if (player1.name === 'GOUKI-BLACK') {
+                        let triggered = player1.startSpecialAttack('shungokusatsu', 0);
+                        if (triggered) goukiCommandBuffer = [];
+                    }
+                }
+            }
+            // ==========================================
 
             if (['q','w','e','a','d','z','x','c'].includes(key)) {
                 if (!moveKeyStack.includes(key)) moveKeyStack.push(key);
                 activeMoveKey = key;
-                const currentDir = getJoystickDirection(myFighter); // 相対方向に修正
+                const currentDir = getJoystickDirection(myFighter);
                 if (inputBuffer.length === 0 || inputBuffer[inputBuffer.length-1].dir !== currentDir) {
                     inputBuffer.push({ dir: currentDir, time: Date.now() });
                 }
             }
 
-            // スペースキーはキャンセルラッシュ用マクロとしても利用
             if (['j','k','l','u','i','o',' '].includes(key) || isSpace) {
                 const currentDir = getJoystickDirection(myFighter);
                 let strength = ['j','u'].includes(key) ? 0 : (['k','i'].includes(key) ? 1 : 2);
                 if (isSpace) strength = 3;
-                
+
                 // 生ラッシュ (66 または パリィ+前)
                 if (checkCommand('66') || (isSpace && currentDir === 6)) {
                     if (myFighter.startDriveRush()) {
-                        inputBuffer = []; return;
+                        inputBuffer = [];
+                        return;
                     } else {
                         myFighter.bufferedInput = { type: 'dash', time: Date.now() };
                     }
@@ -1403,7 +1442,8 @@ updateAndDrawShungokusatsu();
                     if (myFighter.tryThrow()) { inputBuffer = []; return; }
                 }
 
-                let success = false; let isSpecial = false;
+                let success = false;
+                let isSpecial = false;
 
                 // 236コマンド
                 if ((checkCommand('236') || checkCommand('26')) && (['j','k','l',' '].includes(key) || isSpace)) {
@@ -1413,12 +1453,21 @@ updateAndDrawShungokusatsu();
                     if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'hadouken', strength: strength, time: Date.now() };
                     inputBuffer = [];
                 }
-                // 623コマンド
+                // 623コマンド + パンチ（昇竜拳）
                 else if (checkCommand('623') && (['j','k','l',' '].includes(key) || isSpace)) {
                     isSpecial = true;
                     if (strength === 3) { success = myFighter.startSpecialAttack('shoryuken', 3); } 
                     else { success = myFighter.startSpecialAttack('shoryuken', strength); }
                     if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'shoryuken', strength: strength, time: Date.now() };
+                    inputBuffer = [];
+                }
+                // === 623コマンド + キック（百鬼襲）を追加 ===
+                else if (checkCommand('623') && ['u','i','o'].includes(key)) {
+                    isSpecial = true;
+                    if (myFighter.name === 'GOUKI-BLACK') {
+                        success = myFighter.startSpecialAttack('hyakkishu', strength);
+                        if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'hyakkishu', strength: strength, time: Date.now() };
+                    }
                     inputBuffer = [];
                 }
                 // 214コマンド
@@ -1429,53 +1478,13 @@ updateAndDrawShungokusatsu();
                     if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'tatsumaki', strength: strength, time: Date.now() };
                     inputBuffer = [];
                 }
-                               // 236コマンド + K (キック) -> 阿修羅閃空
+                // 阿修羅閃空
                 else if ((checkCommand('236') || checkCommand('26')) && ['u','i','o'].includes(key)) {
                     isSpecial = true;
                     success = myFighter.startSpecialAttack('teleport', strength);
                     if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'teleport', strength: strength, time: Date.now() };
                     inputBuffer = [];
                 }
-
-                
-                
-
-                // 214コマンドの処理ブロックの直下に記述します
-
-                // 阿修羅閃空の古い処理 (currentDirNum === 6 ...) は削除し、以下の「瞬獄殺バッファ処理」に置き換えます。
-                
-                // 瞬獄殺コマンド入力監視用の処理
-                const nowTime = Date.now();
-                if (nowTime - lastGoukiKeyTime > 400) {
-                    goukiCommandBuffer = []; // キー入力の間隔が0.4秒以上空いたらバッファをリセット
-                }
-                lastGoukiKeyTime = nowTime;
-                
-                // e.key ではなく、すでに取得している key 変数を使用します
-                let pressedKey = key;
-                goukiCommandBuffer.push(pressedKey);
-                if (goukiCommandBuffer.length > 8) goukiCommandBuffer.shift();
-
-                // 豪鬼が右を向いていれば前キーは 'd'、左を向いていれば 'a'
-                // ... (ここから下の瞬獄殺の処理は元のままでOKです) ...
-let forwardKeyNum = (player1.facing === 1) ? 'd' : 'a';
-
-if (goukiCommandBuffer.length >= 5) {
-    let len = goukiCommandBuffer.length;
-    // 【j (弱P) -> j (弱P) -> 前方向 -> u (弱K) -> l (強P)】が順番に押されたかチェック
-    if (goukiCommandBuffer[len-5] === 'j' && 
-        goukiCommandBuffer[len-4] === 'j' && 
-        goukiCommandBuffer[len-3] === forwardKeyNum && 
-        goukiCommandBuffer[len-2] === 'u' && 
-        goukiCommandBuffer[len-1] === 'l') {
-        
-        // プレイヤー1が豪鬼（GOUKI-BLACK）の時に、3ゲージあれば発動！
-        if (player1.name === 'GOUKI-BLACK') {
-            let triggered = player1.startSpecialAttack('shungokusatsu', 0);
-            if (triggered) goukiCommandBuffer = []; // 成立したらバッファクリア
-        }
-    }
-}
 
                 if (!isSpecial) {
                     let actBtn = isSpace ? 'dash_macro' : key;
@@ -1485,7 +1494,9 @@ if (goukiCommandBuffer.length >= 5) {
 
                 if (success) myFighter.bufferedInput = null;
             }
-        });
+
+            }
+        );
 
         window.addEventListener('keyup', (event) => {
             const key = event.key.toLowerCase();
