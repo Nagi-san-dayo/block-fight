@@ -499,7 +499,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                     };
                     this.stateTimer = 35;
                     this.updateAttackBox();
-                    document.getElementById((this === player1) ? 'p1-status' : 'p2-status' )
+                    document.getElementById((this === player1) ? 'p1-status' : 'p2-status' ).innerText = this.currentAttack.name;
                 }
                 let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
                 let isAirborne = (!this.isGrounded && this.state !== 'idle');
@@ -640,7 +640,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                         };
                     this.stateTimer = 38;
                     this.vy = -1;
-                    let spawnX = this.facing === 1 ? this.X + this.width + 10 : this.x - 80;
+                    let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
                     projectiles.push(new Fireball(spawnX, this.y + 60, this.facing, this, false, strength, true));
                 } else{
                     this.currentAttack = {
@@ -1325,6 +1325,8 @@ updateAndDrawShungokusatsu();
             const historyStr = inputBuffer.map(i => i.dir).join(''); 
             return historyStr.includes(pattern);
         }
+        let goukiCommandBuffer = [];
+        let lastGoukiKeyTime = 0;
 
         window.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
@@ -1427,28 +1429,35 @@ updateAndDrawShungokusatsu();
                     if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'tatsumaki', strength: strength, time: Date.now() };
                     inputBuffer = [];
                 }
-                if(currentDirNum === 6 && e.key === 'o'){
-                    player1.startSpecialAttack('teleport', 2);    
-            }
-            else if(currentDirNum === 4 && e.key === 'o'){
-                    player1.startSpecialAttack('teleport', 0);
+                               // 236コマンド + K (キック) -> 阿修羅閃空
+                else if ((checkCommand('236') || checkCommand('26')) && ['u','i','o'].includes(key)) {
+                    isSpecial = true;
+                    success = myFighter.startSpecialAttack('teleport', strength);
+                    if (!success) myFighter.bufferedInput = { type: 'special', moveName: 'teleport', strength: strength, time: Date.now() };
+                    inputBuffer = [];
                 }
-                // 瞬獄殺コマンド入力監視用のバッファ変数
-let goukiCommandBuffer = [];
-let lastGoukiKeyTime = 0;
 
-// window.addEventListener('keydown', (e) => { ... }) の中に以下を追加してください
-const nowTime = Date.now();
-if (nowTime - lastGoukiKeyTime > 400) {
-    goukiCommandBuffer = []; // キー入力の間隔が0.4秒以上空いたらバッファをリセット
-}
-lastGoukiKeyTime = nowTime;
+                
+                
 
-let pressedKey = e.key.toLowerCase();
-goukiCommandBuffer.push(pressedKey);
-if (goukiCommandBuffer.length > 8) goukiCommandBuffer.shift(); // 過去8キーまで記憶
+                // 214コマンドの処理ブロックの直下に記述します
 
-// 豪鬼が右を向いていれば前キーは 'd'、左を向いていれば 'a'
+                // 阿修羅閃空の古い処理 (currentDirNum === 6 ...) は削除し、以下の「瞬獄殺バッファ処理」に置き換えます。
+                
+                // 瞬獄殺コマンド入力監視用の処理
+                const nowTime = Date.now();
+                if (nowTime - lastGoukiKeyTime > 400) {
+                    goukiCommandBuffer = []; // キー入力の間隔が0.4秒以上空いたらバッファをリセット
+                }
+                lastGoukiKeyTime = nowTime;
+                
+                // e.key ではなく、すでに取得している key 変数を使用します
+                let pressedKey = key;
+                goukiCommandBuffer.push(pressedKey);
+                if (goukiCommandBuffer.length > 8) goukiCommandBuffer.shift();
+
+                // 豪鬼が右を向いていれば前キーは 'd'、左を向いていれば 'a'
+                // ... (ここから下の瞬獄殺の処理は元のままでOKです) ...
 let forwardKeyNum = (player1.facing === 1) ? 'd' : 'a';
 
 if (goukiCommandBuffer.length >= 5) {
