@@ -490,7 +490,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                     this.state = 'attack';
                     this.hasHitThisAttack = false;
                     this.vx = this.facing * 6;
-                    this.vy = 12;
+                    this.vy = 30;
                     this.currentAttack = {
                         name: '天魔空刃脚', damage : 6,
                         width: 80, height: 70, offsetX: 40, offsetY: 150,
@@ -640,7 +640,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                             isProjectile: true, damage: 7, hitStun: 16, guardStun: 8, knockdown: false, launch: false
                         };
                     this.stateTimer = 38;
-                    this.vy = -1;
+                    this.vy = -5;
                     let spawnX = this.facing === 1 ? this.x + this.width + 10 : this.x - 80;
                     projectiles.push(new Fireball(spawnX, this.y + 60, this.facing, this, false, strength, true));
                 } else{
@@ -722,6 +722,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
         this.stateTimer = 50;       // 掴みかかるための突進時間
         this.invincibleTimer = 50;  // 突進中は完全無敵
         this.vx = this.facing * 22; // 前方へ高速スライド移動
+        this.vx = 0;
         
         
         this.currentAttack = { 
