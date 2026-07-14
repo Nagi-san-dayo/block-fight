@@ -500,6 +500,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                     this.stateTimer = 35;
                     this.updateAttackBox();
                     document.getElementById((this === player1) ? 'p1-status' : 'p2-status' ).innerText = this.currentAttack.name;
+                    return true;
                 }
                 let isRapid = (this.state === 'attack' && this.hasHitThisAttack && this.currentAttack && this.currentAttack.rapidCancelable && strengthNum === 0);
                 let isAirborne = (!this.isGrounded && this.state !== 'idle');
@@ -726,6 +727,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
         this.currentAttack = { 
             name: '一瞬千撃… 瞬獄殺！', 
             isShunGokuSatsu: true, 
+            isDash: true,
             damage: 0, // 掴んだ後の演出中にダメージを刻むためここでは0
             width: 120, height: 220, offsetX: 0, offsetY: 0 
         };
@@ -1320,7 +1322,7 @@ updateAndDrawShungokusatsu();
         // コマンド判定バッファ猶予の延長 (400 -> 600)
         function checkCommand(pattern) {
             const now = Date.now();
-            inputBuffer = inputBuffer.filter(i => now - i.time < 600); 
+            inputBuffer = inputBuffer.filter(i => now - i.time < 300); 
             const historyStr = inputBuffer.map(i => i.dir).join(''); 
             return historyStr.includes(pattern);
         }
@@ -1329,6 +1331,7 @@ updateAndDrawShungokusatsu();
 
         window.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
+            const prevKeys = {};
             const isSpace = (event.code === 'Space' || key === ' ');
 
             if (isSpace) { event.preventDefault(); }
