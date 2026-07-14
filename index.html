@@ -722,7 +722,6 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
         this.stateTimer = 50;       // 掴みかかるための突進時間
         this.invincibleTimer = 50;  // 突進中は完全無敵
         this.vx = this.facing * 22; // 前方へ高速スライド移動
-        this.vx = 0;
         
         
         this.currentAttack = { 
@@ -1243,8 +1242,8 @@ function updateAndDrawShungokusatsu() {
                 if ([1, 4, 7].includes(p1Dir)) player1.vx = player1.facing * -6; // 後退
                 else if ([3, 6, 9].includes(p1Dir)) player1.vx = player1.facing * 6; // 前進
                 else player1.vx = 0;
-            } else if (player1.state !== 'attack' || !player1.currentAttack || (!player1.currentAttack.name.includes('竜巻') && !player1.currentAttack.isDash)) { 
-                if(player1.state === 'attack' && player1.isGrounded && !player1.currentAttack.isDash) player1.vx = 0;
+            } else if (player1.state !== 'attack' || !player1.currentAttack || (!player1.currentAttack.name.includes('回転') && !player1.currentAttack.isDash)) { 
+                if(player1.state === 'attack' && player1.isGrounded && player1.currentAttack && !player1.currentAttack.isDash) player1.vx = 0;
             }
             player1.update(p1Dir);
 
@@ -1256,8 +1255,8 @@ function updateAndDrawShungokusatsu() {
                         if ([7, 8, 9].includes(p2Dir) && player2.isGrounded) player2.vy = -18;
                         if ([1, 4, 7].includes(p2Dir)) player2.vx = player2.facing * -6;
                         else if ([3, 6, 9].includes(p2Dir)) player2.vx = player2.facing * 6; else player2.vx = 0;
-                    } else if (player2.state !== 'attack' || !player2.currentAttack || (!player2.currentAttack.name.includes('竜巻') && !player2.currentAttack.isDash)) {
-                        if(player2.state === 'attack' && player2.isGrounded && !player2.currentAttack.isDash) player2.vx = 0;
+                    } else if (player2.state !== 'attack' || !player2.currentAttack || (!player2.currentAttack.name.includes('回転') && !player2.currentAttack.isDash)) {
+                        if(player2.state === 'attack' && player2.isGrounded && player2.currentAttack && !player2.currentAttack.isDash) player2.vx = 0;
                     }
                     player2.update(p2Dir);
                     socket.emit('playerUpdate', { roomId: currentRoomId, playerType: 'p2', x: player2.x, y: player2.y, vx: player2.vx, vy: player2.vy, state: player2.state, hp: player2.hp, facing: player2.facing, isCrouching: player2.isCrouching, height: player2.height, activeMoveKey: activeMoveKey });
