@@ -746,18 +746,6 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                     socket.emit('playerAttack', { roomId: currentRoomId, playerType: myPlayerType, attackType: 'special', moveName, strength });
                 }
                 return true;
-                // === ここから瞬獄殺の処理を追加 ===
-    if (moveName === 'shungoku') {
-        this.state = 'attack';
-        this.attackTimer = 40; // 技の持続時間
-        this.currentAttack = {
-            name: '瞬獄殺',
-            type: 'special',
-            damage: 0, // 掴み判定なので最初は0（ヒット演出中に大ダメージを与えるため）
-            isShunGokuSatsu: true // 瞬獄殺フラグを有効化
-        };
-        this.vx = 15 * this.facing; // 高速で前進
-        this.vy = 0;
         
         // UI表示の更新
         document.getElementById((this === player1) ? 'p1-status' : 'p2-status').innerText = "瞬獄殺";
@@ -770,9 +758,7 @@ let shungokuFlashes = []; // 画面を切り裂く一閃エフェクトの配列
                 strength: 0
             });
         }
-    }
-    // === ここまで ===
-} // startSpecialAttack の終わり
+            }
 
             evaluateHit(attack, hitType) {
                 if (this.invincible && this.state !== 'air_hit') return;
